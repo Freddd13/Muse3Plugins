@@ -1,0 +1,22 @@
+{
+  "pluginVersion": "1.2.0",
+  "personalVersion": "0.4.0",
+  "commit": "9a5ae07ec43b3c6aacd53692c199b8f94ced8e75",
+  "parent": "a818d9a7009306a721363b17a2aab4ee3178ab09",
+  "files": {
+    "HarmonyAssistant_MS3.qml": "18ed9027a1c4f8a6714f2798351f9815e76f3f1c4f02ad5cc25350dec9b8b7e2",
+    "Harmony.js": "e12d531d1852337d0089c2f5a3a3577c7e4a06a4f1f7fea836455c425ff8808a",
+    "Preferences.js": "2f7a98694c9da75707202d3208dc2fbd5e18ab2f70188600bd9ae6e3235bc529",
+    "Analysis.js": "1b53a1ed0dd0b779dd6a2d7bef3141bbda1496ccb0ad2f08ad7a84c49511f967",
+    "ConfigurationEditor.qml": "903ad67036afd3e6646da7dfba0102f4d49fd49b1a2e3411b2236fadfb9066e9",
+    "SettingsStore.qml": "b934653f7e94fdbb960fd433ddce1024b5d0012cce00d645675cfe0e96ddefd5",
+    "PanelCard.qml": "8328592770e187b83063094dabcb426064849ec7de31a76949c4fd7cee0ebaa4",
+    "UiLabel.qml": "218fe7ceb983bfa4c98bb4fe37cd253765d4b283b41fa39d3bf923cbc91f66c7",
+    "StableLabel.qml": "e35069e54f311d9ae6bbb6903e1bfedd9601f50312f455790854d8916ae76a4b",
+    "ColorOption.qml": "eecc055a37f9602234a647e4ab06143640281731046bd7be69e38627dbce9c6c",
+    "AppearanceEditor.qml": "2bc0079b884353a50fcb859a84d973cec49a241fc2df36a5f18c1832f94002d3",
+    "README.md": "46098e9a5252525da8ca54e77e05daea1ccc8c247e8f9be50df70dc7defab07a"
+  },
+  "HarmonyAssistant-1.2.0.zip": "c3c4387a7c146d30b6d8bbc7440c9d04d6379d2ff35908e25c1271d4f2597d12",
+  "MuseScore3Evo.exe": "610fbdb7aaf71016e7d565c4d083c756fcc680f5c4b55a75c2c27e1c73c88538"
+}

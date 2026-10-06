@@ -1,0 +1,1373 @@
+From 3a538f4ef50631fdc97441b9ec9b0fcc66274572 Mon Sep 17 00:00:00 2001
+From: Freddd13 <50367552+Freddd13@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 09:46:44 +0800
+Subject: [PATCH] feat(plugins): anchor harmonic changes and share detail docks
+
+---
+ mscore/editelement.cpp                        |   2 +
+ mscore/notepreview.h                          |  73 +++++---
+ mscore/plugin/api/scoreobserver.cpp           | 167 +++++++++++-------
+ mscore/plugin/api/scoreobserver.h             |   3 +
+ mscore/plugin/qmlplugin.cpp                   |  43 +++++
+ mscore/plugin/qmlplugin.h                     |  12 ++
+ mscore/scoreview.cpp                          |  33 +++-
+ mscore/scoreview.h                            |   3 +-
+ mtest/mscore/pluginhost/tst_pluginhost.cpp    | 126 ++++++++++++-
+ mtest/mscore/scoreobserver/smoke.qml          |   9 +-
+ mtest/mscore/scoreobserver/test-exchange.cjs  |   5 +
+ .../scoreobserver/tst_scoreobserver.cpp       |  20 +++
+ personal/CHANGELOG.md                         |  18 ++
+ personal/VERSION                              |   2 +-
+ personal/docs/01-architecture.md              |   2 +
+ personal/docs/04-feature-map.md               |   2 +
+ personal/docs/05-piano-development.md         |   2 +
+ personal/docs/06-build-and-test.md            |   2 +
+ personal/docs/10-score-observer.md            |   8 +-
+ personal/docs/README.md                       |   2 +-
+ personal/docs/source-map.tsv                  |  27 +--
+ .../HarmonyAssistant/AppearanceEditor.qml     |   5 +
+ .../HarmonyAssistant/HarmonyAssistant_MS3.qml |  69 ++++++--
+ share/plugins/HarmonyAssistant/Preferences.js |   4 +-
+ share/plugins/HarmonyAssistant/README.md      |  29 ++-
+ 25 files changed, 526 insertions(+), 142 deletions(-)
+
+diff --git a/mscore/editelement.cpp b/mscore/editelement.cpp
+index 0d4757f54..55f594466 100644
+--- a/mscore/editelement.cpp
++++ b/mscore/editelement.cpp
+@@ -141,6 +141,7 @@ void ScoreView::startEdit(bool editMode)
+       editData.curGrip = editMode ? e->initialEditModeGrip() : Grip::NO_GRIP;
+ 
+       editData.element->startEdit(editData);
++      if (!_notePreviewLayers.empty()) updateAll();
+       updateGrips();
+ 
+       QGuiApplication::inputMethod()->reset();
+@@ -172,6 +173,7 @@ void ScoreView::endEdit()
+                   lyricsEndEdit();
+             }
+       editData.clearData();
++      if (!_notePreviewLayers.empty()) updateAll();
+       mscore->updateInspector();
+       }
+ 
+diff --git a/mscore/notepreview.h b/mscore/notepreview.h
+index f03ad2f4a..3a51c7e59 100644
+--- a/mscore/notepreview.h
++++ b/mscore/notepreview.h
+@@ -34,7 +34,8 @@ struct NotePreviewEntry {
+       QColor chordColor = QColor("#343a3f");
+       QColor highlightColor = QColor("#0043ce");
+       QColor highlightBackground = QColor("#d0e2ff");
+-      bool chordActive = false;
++      bool chordMask = true;
++      const Element* sourceAnchor = nullptr; // opaque identity for destruction cleanup only
+       int chordTick = -1;
+       int chordUntil = 0;
+       int annotationTrack = 0;
+@@ -47,12 +48,14 @@ struct NotePreviewEntry {
+                   && chordFont == other.chordFont && degreeFont == other.degreeFont
+                   && primaryBox == other.primaryBox && secondaryBox == other.secondaryBox
+                   && chordColor == other.chordColor && highlightColor == other.highlightColor
+-                  && highlightBackground == other.highlightBackground && chordActive == other.chordActive
++                  && highlightBackground == other.highlightBackground && chordMask == other.chordMask
++                  && sourceAnchor == other.sourceAnchor
+                   && chordTick == other.chordTick && chordUntil == other.chordUntil
+                   && annotationTrack == other.annotationTrack && activationTarget == other.activationTarget;
+             }
+       };
+ using NotePreviewColors = QHash<const Element*, NotePreviewEntry>;
++using NotePreviewMarkers = QVector<NotePreviewEntry>;
+ 
+ inline QFont notePreviewFont(qreal spatium, bool chord)
+       {
+@@ -99,31 +102,41 @@ class NotePreviewLayers {
+       struct Layer {
+             const void* owner;
+             NotePreviewColors colors;
+-            QMap<int,QVector<const Element*>> chords;
+-            QSet<const Element*> activeChords;
++            NotePreviewMarkers markers;
++            QMap<int,QVector<int>> chords;
++            QSet<int> activeChords;
++            QMultiHash<const Element*,int> sources;
+             };
+       QVector<Layer> _layers;
+    public:
+       bool contains(const void* owner) const
+             { for (const auto& layer : _layers) if (layer.owner == owner) return true; return false; }
+       bool empty() const { return _layers.isEmpty(); }
+-      QRectF replace(const void* owner, const NotePreviewColors& colors)
++      QRectF replace(const void* owner, const NotePreviewColors& colors, const NotePreviewMarkers& markers = {})
+             {
++            NotePreviewMarkers next=markers;
++            // Accept legacy inline chord entries, while independent markers may share a source note.
++            for (auto it=colors.cbegin();it!=colors.cend();++it) if (!it->chordBox.isEmpty()) {
++                  auto entry=it.value();entry.sourceAnchor=it.key();next.append(entry);
++                  }
+             QRectF dirty;
+             int index = -1;
+             for (int i=0;i<_layers.size();++i) if (_layers[i].owner==owner) {index=i;break;}
+             if (index>=0) {
+-                  if (_layers[index].colors==colors) return dirty;
++                  if (_layers[index].colors==colors && _layers[index].markers==next) return dirty;
+                   for (const auto& entry : _layers[index].colors) dirty |= entry.bounds;
++                  for (const auto& entry : _layers[index].markers) dirty |= entry.bounds;
+                   }
+             for (const auto& entry : colors) dirty |= entry.bounds;
+-            if (colors.isEmpty()) {if (index>=0) _layers.removeAt(index);return dirty;}
+-            Layer layer {owner,colors,{}, {}};
+-            for (auto it=colors.cbegin();it!=colors.cend();++it)
+-                  if (!it->chordBox.isEmpty()) layer.chords[it->annotationTrack].append(it.key());
++            for (const auto& entry : next) dirty |= entry.bounds;
++            if (colors.isEmpty() && next.isEmpty()) {if (index>=0) _layers.removeAt(index);return dirty;}
++            Layer layer {owner,colors,next,{}, {}, {}};
++            for (int i=0;i<next.size();++i) if (!next[i].chordBox.isEmpty()) {
++                  layer.chords[next[i].annotationTrack].append(i);layer.sources.insert(next[i].sourceAnchor,i);
++                  }
+             for (auto& group : layer.chords)
+-                  std::sort(group.begin(),group.end(),[&](const Element* a,const Element* b) {
+-                        return colors.constFind(a)->chordTick < colors.constFind(b)->chordTick;
++                  std::sort(group.begin(),group.end(),[&](int a,int b) {
++                        return next[a].chordTick < next[b].chordTick;
+                         });
+             if (index>=0) _layers[index]=layer; else _layers.append(layer);
+             return dirty;
+@@ -143,21 +156,20 @@ class NotePreviewLayers {
+             QRectF dirty;
+             for (auto& layer : _layers) {
+                   if (layer.owner!=owner) continue;
+-                  QSet<const Element*> next;
++                  QSet<int> next;
+                   if (tick>=0) for (const auto& group : layer.chords) {
+-                        auto it=std::upper_bound(group.cbegin(),group.cend(),tick,[&](int value,const Element* key) {
+-                              return value < layer.colors.constFind(key)->chordTick;
++                        auto it=std::upper_bound(group.cbegin(),group.cend(),tick,[&](int value,int index) {
++                              return value < layer.markers[index].chordTick;
+                               });
+                         if (it==group.cbegin()) continue;
+-                        const auto key=*--it;
+-                        if (tick < layer.colors.constFind(key)->chordUntil) next.insert(key);
++                        const auto index=*--it;
++                        if (tick < layer.markers[index].chordUntil) next.insert(index);
+                         }
+                   if (next==layer.activeChords) return dirty;
+                   const auto changed=(next-layer.activeChords)+(layer.activeChords-next);
+-                  for (const auto key : changed) {
+-                        auto it=layer.colors.constFind(key);
+-                        if (it==layer.colors.constEnd()) continue;
+-                        dirty |= it->chordBox.translated(it->anchor);
++                  for (int index : changed) {
++                        const auto& entry=layer.markers[index];
++                        dirty |= entry.chordBox.translated(entry.anchor);
+                         }
+                   layer.activeChords=next;
+                   }
+@@ -166,13 +178,13 @@ class NotePreviewLayers {
+       template<typename Callback> void forEachChord(Callback callback) const
+             {
+             for (const auto& layer : _layers) for (const auto& group : layer.chords)
+-                  for (const auto key : group) callback(layer.colors.constFind(key).value(),layer.activeChords.contains(key));
++                  for (int index : group) callback(layer.markers[index],layer.activeChords.contains(index));
+             }
+       bool activate(const QPointF& canvasPosition) const
+             {
+             for (auto layer=_layers.crbegin();layer!=_layers.crend();++layer)
+-                  for (const auto& group : layer->chords) for (const auto key : group) {
+-                        const auto& entry=layer->colors.constFind(key).value();
++                  for (const auto& group : layer->chords) for (int index : group) {
++                        const auto& entry=layer->markers[index];
+                         if (entry.activationTarget && entry.chordBox.translated(entry.anchor).contains(canvasPosition))
+                               return QMetaObject::invokeMethod(entry.activationTarget,"activatePreview",Qt::DirectConnection,
+                                     Q_ARG(int,entry.chordTick),Q_ARG(int,entry.annotationTrack));
+@@ -183,11 +195,14 @@ class NotePreviewLayers {
+             {
+             // Destruction callbacks must never inspect the partially destroyed Element.
+             for (auto& layer : _layers) {
+-                  auto it=layer.colors.find(note);
+-                  if (it==layer.colors.end()) continue;
+-                  layer.chords[it->annotationTrack].removeAll(note);
+-                  layer.activeChords.remove(note);
+-                  layer.colors.erase(it);
++                  layer.colors.remove(note);
++                  const auto indices=layer.sources.values(note);
++                  for (int index : indices) {
++                        auto& entry=layer.markers[index];
++                        layer.chords[entry.annotationTrack].removeAll(index);layer.activeChords.remove(index);
++                        entry.chordBox={};entry.bounds={};entry.sourceAnchor=nullptr;
++                        }
++                  layer.sources.remove(note);
+                   }
+             }
+       void clear() { _layers.clear(); }
+diff --git a/mscore/plugin/api/scoreobserver.cpp b/mscore/plugin/api/scoreobserver.cpp
+index 8025f701c..e3b832a5a 100644
+--- a/mscore/plugin/api/scoreobserver.cpp
++++ b/mscore/plugin/api/scoreobserver.cpp
+@@ -16,6 +16,7 @@
+ #include "mscore/seq.h"
+ #include "mscore/musescore.h"
+ #include "libmscore/chord.h"
++#include "libmscore/harmony.h"
+ #include "libmscore/measure.h"
+ #include "libmscore/note.h"
+ #include "libmscore/segment.h"
+@@ -348,16 +349,40 @@ Ms::Note* ScoreObserver::resolve(const QVariantMap& value, const QHash<int, Ms::
+       return note;
+       }
+ 
++// A tick without a written onset still has a stable horizontal location in its measure.
++// Prefer actual segment positions; interpolate only between neighboring rhythmic positions.
++static qreal previewTickX(const Ms::Measure* measure, int tick, const Ms::Segment** exact)
++      {
++      qreal left=0,right=measure->width();
++      int leftTick=measure->tick().ticks(),rightTick=measure->endTick().ticks();
++      *exact=nullptr;
++      for (auto segment=measure->first(SegmentType::ChordRest);segment;segment=segment->next(SegmentType::ChordRest)) {
++            if (!segment->enabled()) continue;
++            const int position=segment->tick().ticks();
++            if (position==tick) {*exact=segment;return segment->pagePos().x();}
++            if (position>tick) {right=segment->x();rightTick=position;break;}
++            left=segment->x();leftTick=position;
++            }
++      const qreal amount=rightTick>leftTick ? qBound(qreal(0),qreal(tick-leftTick)/(rightTick-leftTick),qreal(1)) : 0;
++      return measure->pagePos().x()+left+(right-left)*amount;
++      }
++
+ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors)
+       {
+       if (!_score || !_enabled || !_surfaceVisible) { clearPreview(owner); return; }
+       NotePreviewColors colors;
+-      QHash<int, Ms::Segment*> segments;
+-      if (descriptors.size()>64)
++      NotePreviewMarkers markers;
++      QVector<QPointF> positions;
++      QHash<int,Ms::Segment*> segments;
++      QMap<int,Ms::Measure*> measures;
++      if (descriptors.size()>64) {
+             for (auto segment=_score->firstSegment(SegmentType::ChordRest);segment;segment=segment->next1(SegmentType::ChordRest))
+                   segments.insert(segment->tick().ticks(),segment);
+-      QHash<const Page*,QVector<QRectF>> occupied;
+-      QHash<const System*,QMap<int,QVector<const Ms::Note*>>> groups;
++            for (auto measure=_score->firstMeasure();measure;measure=measure->nextMeasure())
++                  measures.insert(measure->tick().ticks(),measure);
++            }
++      QHash<const Page*,QVector<QRectF>> occupied,chordBoxes;
++      QHash<const System*,QMap<int,QVector<int>>> groups;
+       for (const auto& descriptor : descriptors) {
+             const auto value=descriptor.toMap();
+             auto note=resolve(value,descriptors.size()>64 ? &segments : nullptr);
+@@ -369,10 +394,12 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+             NotePreviewEntry entry {QColor(value.value("color").toString()),note->canvasBoundingRect().adjusted(-sp,-sp,sp,sp)};
+             entry.label=value.value("label").toString().left(24);
+             entry.active=value.value("active").toBool();
+-            entry.anchor=note->canvasPos(); entry.spatium=sp;
++            entry.anchor=note->canvasPos();entry.spatium=sp;
+             const QPointF anchor=note->pagePos();
+             auto collides=[&](const QRectF& candidate) {
+                   if (!page->bbox().contains(candidate)) return true;
++                  if (owner==this) for (const auto& box : _baseChordBoxes.value(page))
++                        if (box.adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)) return true;
+                   for (const auto& box : occupied[page])
+                         if (box.adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)) return true;
+                   for (const auto element : page->items(candidate)) {
+@@ -392,89 +419,105 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+                               const qreal y=anchor.y()-size.height()/2+(lane==0 ? 0 : ((lane+1)/2)*(lane%2 ? -1 : 1)*sp*1.2);
+                               const QRectF candidate(anchor.x()+note->bbox().right()+sp*.45,y,size.width(),size.height());
+                               if (collides(candidate)) continue;
+-                              occupied[page].append(candidate);
+-                              entry.labelBox=candidate.translated(-anchor);break;
++                              occupied[page].append(candidate);entry.labelBox=candidate.translated(-anchor);break;
+                               }
+                         }
+                   }
+             entry.bounds |= entry.labelBox.translated(entry.anchor);
+-            entry.chord=value.value("chord").toString().left(64);
+-            entry.degree=value.value("degree").toString().left(24);
+-            if (!entry.chord.isEmpty() || !entry.degree.isEmpty()) {
+-                  entry.annotationTrack=note->staff()->part()->startTrack();
+-                  entry.chordTick=qMax(0,value.value("chordTick",note->chord()->tick().ticks()).toInt());
+-                  entry.chordUntil=qMax(entry.chordTick,value.value("chordUntil",INT_MAX).toInt());
+-                  entry.activationTarget=this;
+-                  QString family=value.value("chordFont").toString().left(64);
+-                  if (family.isEmpty()) family=_score->styleSt(Sid::chordSymbolAFontFace);
+-                  qreal scale=value.value("chordScale",1.0).toDouble();
+-                  if (!qIsFinite(scale) || scale<.6 || scale>2.) scale=1.;
+-                  entry.chordFont=QFont(family);
+-                  entry.chordFont.setPixelSize(qMax(5,qRound(sp*1.65*scale)));
+-                  entry.chordFont.setLetterSpacing(QFont::AbsoluteSpacing,-sp*.02);
+-                  entry.degreeFont=QFont("Arial");
+-                  entry.degreeFont.setPixelSize(qMax(5,qRound(sp*1.45*scale)));
+-                  auto readColor=[&](const char* key,const QColor& fallback) {
+-                        const QColor color(value.value(key).toString());return color.isValid() ? color : fallback;
+-                        };
+-                  entry.chordColor=readColor("chordColor",entry.chordColor);
+-                  entry.highlightColor=readColor("highlightColor",entry.highlightColor);
+-                  entry.highlightBackground=readColor("highlightBackground",entry.highlightBackground);
+-                  entry.chordBox=QRectF(QPointF(),layoutPreviewChord(entry,qBound(0,value.value("chordOrder").toInt(),3)));
+-                  auto& group=groups[system][entry.annotationTrack];
+-                  if (!group.contains(note)) group.append(note);
++            if (entry.color.isValid() || !entry.label.isEmpty() || entry.active) colors.insert(note,entry);
++            entry.chord=value.value("chord").toString().left(64);entry.degree=value.value("degree").toString().left(24);
++            if (entry.chord.isEmpty() && entry.degree.isEmpty()) continue;
++            entry.chordTick=qMax(0,value.value("chordTick",note->chord()->tick().ticks()).toInt());
++            entry.chordUntil=qMax(entry.chordTick,value.value("chordUntil",INT_MAX).toInt());
++            Ms::Measure* measure=nullptr;
++            if (descriptors.size()>64) {
++                  auto it=measures.upperBound(entry.chordTick);
++                  if (it!=measures.begin()) measure=*--it;
+                   }
+-            colors.insert(note,entry);
++            else measure=_score->tick2measure(Fraction::fromTicks(entry.chordTick));
++            if (!measure || entry.chordTick>=measure->endTick().ticks() || !measure->system()) continue;
++            system=measure->system();page=system->page();if (!page) continue;
++            const Ms::Segment* exact=nullptr;
++            const qreal x=previewTickX(measure,entry.chordTick,&exact);
++            if (exact && value.value("preferExistingHarmony").toBool())
++                  for (const auto annotation : exact->annotations()) {
++                        if (!annotation->visible() || !annotation->isHarmony() || !annotation->staff()
++                              || annotation->staff()->part()!=note->staff()->part()) continue;
++                        const auto harmony=toHarmony(annotation);
++                        if (harmony->harmonyName().trimmed().isEmpty()) continue;
++                        if (harmony->harmonyType()==HarmonyType::ROMAN) entry.degree.clear();else entry.chord.clear();
++                        }
++            if (entry.chord.isEmpty() && entry.degree.isEmpty()) continue;
++            entry.annotationTrack=note->staff()->part()->startTrack();entry.activationTarget=this;
++            entry.sourceAnchor=note;entry.chordMask=value.value("chordMask",true).toBool();
++            entry.label.clear();entry.labelBox={};entry.color={};entry.active=false;entry.bounds={};
++            // This anchor belongs to the change's system, even if its sustained source note is on a prior line.
++            const QPointF position(x,system->staffYpage(entry.annotationTrack/VOICES));
++            entry.anchor=position+page->pos();
++            QString family=value.value("chordFont").toString().left(64);
++            if (family.isEmpty()) family=_score->styleSt(Sid::chordSymbolAFontFace);
++            qreal scale=value.value("chordScale",1.0).toDouble();
++            if (!qIsFinite(scale) || scale<.6 || scale>2.) scale=1.;
++            entry.chordFont=QFont(family);entry.chordFont.setPixelSize(qMax(5,qRound(sp*1.65*scale)));
++            entry.chordFont.setLetterSpacing(QFont::AbsoluteSpacing,-sp*.02);
++            entry.degreeFont=QFont("Arial");entry.degreeFont.setPixelSize(qMax(5,qRound(sp*1.45*scale)));
++            auto readColor=[&](const char* key,const QColor& fallback) {
++                  const QColor color(value.value(key).toString());return color.isValid() ? color : fallback;
++                  };
++            entry.chordColor=readColor("chordColor",entry.chordColor);
++            entry.highlightColor=readColor("highlightColor",entry.highlightColor);
++            entry.highlightBackground=readColor("highlightBackground",entry.highlightBackground);
++            entry.chordBox=QRectF(QPointF(),layoutPreviewChord(entry,qBound(0,value.value("chordOrder").toInt(),3)));
++            groups[system][entry.annotationTrack].append(markers.size());markers.append(entry);positions.append(position);
+             }
+-      // Choose one shared row per system/part, rather than floating each chord to a different lane.
+-      // Limit vertical drift to four nearby rows. Dense labels are omitted on that shared row.
++      // One shared row per system/part. No horizontal nudging: x remains the harmonic change's tick.
+       for (auto systemIt=groups.cbegin();systemIt!=groups.cend();++systemIt) {
+-            const auto system=systemIt.key(); const auto page=system->page();
++            const auto system=systemIt.key();const auto page=system->page();
+             for (auto groupIt=systemIt->cbegin();groupIt!=systemIt->cend();++groupIt) {
+                   auto group=groupIt.value();
+-                  std::sort(group.begin(),group.end(),[&](const Ms::Note* a,const Ms::Note* b) {
+-                        return colors.constFind(a)->chordTick < colors.constFind(b)->chordTick;
+-                        });
+-                  const qreal sp=group.front()->spatium();
+-                  qreal height=0;for (const auto note : group) height=qMax(height,colors.constFind(note)->chordBox.height());
++                  std::sort(group.begin(),group.end(),[&](int a,int b){return markers[a].chordTick<markers[b].chordTick;});
++                  const qreal sp=markers[group.front()].spatium;
++                  qreal height=0;for (int index:group) height=qMax(height,markers[index].chordBox.height());
+                   const qreal top=system->staffYpage(groupIt.key()/VOICES)-sp*1.5-height;
+-                  QVector<QRectF> best; int bestCount=-1;
++                  QVector<QRectF> best;int bestCount=-1;
+                   for (int lane=0;lane<4;++lane) {
+-                        QVector<QRectF> boxes; int count=0;
+-                        for (const auto note : group) {
+-                              const auto& entry=colors.constFind(note).value();
+-                              const QRectF candidate(note->pagePos().x(),top-lane*sp*1.3,entry.chordBox.width(),height);
++                        QVector<QRectF> boxes;int count=0;
++                        for (int index:group) {
++                              const auto& entry=markers[index];
++                              const QRectF candidate(positions[index].x(),top-lane*sp*1.3,entry.chordBox.width(),height);
+                               bool collision=!page->bbox().contains(candidate);
+-                              for (const auto& box : boxes) if (!box.isEmpty() && box.adjusted(-sp*.2,0,sp*.2,0).intersects(candidate)) {collision=true;break;}
+-                              if (!collision) for (const auto& box : occupied[page])
+-                                    if (box.adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)) {collision=true;break;}
+-                              if (!collision) for (const auto element : page->items(candidate)) {
++                              if (owner==this) for (const auto& box:_baseChordBoxes.value(page))
++                                    if (box.adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)){collision=true;break;}
++                              for (const auto& box:boxes) if (!box.isEmpty() && box.adjusted(-sp*.2,0,sp*.2,0).intersects(candidate)){collision=true;break;}
++                              if (!collision) for (const auto& box:occupied[page])
++                                    if (box.adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)){collision=true;break;}
++                              if (!collision) for (const auto element:page->items(candidate)) {
+                                     if (!element->visible() || element->isStaffLines() || element->isPage() || element->isSystem() || element->isMeasure()) continue;
+-                                    if (element->pageBoundingRect().adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)) {collision=true;break;}
++                                    if (element->pageBoundingRect().adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)){collision=true;break;}
+                                     }
+                               boxes.append(collision ? QRectF() : candidate);if (!collision)++count;
+                               }
+-                        if (count>bestCount) {bestCount=count;best=boxes;}
++                        if (count>bestCount){bestCount=count;best=boxes;}
+                         if (count==group.size()) break;
+                         }
+                   for (int i=0;i<group.size();++i) {
+-                        auto& entry=colors[group[i]];
+-                        entry.chordBox=best[i].isEmpty() ? QRectF() : best[i].translated(-group[i]->pagePos());
+-                        if (!best[i].isEmpty()) occupied[page].append(best[i]);
+-                        entry.bounds |= entry.chordBox.translated(entry.anchor);
++                        auto& entry=markers[group[i]];
++                        entry.chordBox=best[i].isEmpty() ? QRectF() : best[i].translated(-positions[group[i]]);
++                        if (!best[i].isEmpty()){occupied[page].append(best[i]);chordBoxes[page].append(best[i]);}
++                        entry.bounds=entry.chordBox.isEmpty() ? QRectF() : entry.chordBox.translated(entry.anchor);
+                         }
+                   }
+             }
+-      if (owner==&_baseOwner) _baseColors=colors;
+-      for (auto viewer : _score->getViewer()) {
+-            auto view=dynamic_cast<Ms::ScoreView*>(viewer);
+-            if (!view) continue;
+-            view->setNotePreviewColors(owner,colors);
++      if (owner==&_baseOwner){_baseColors=colors;_baseChordBoxes=chordBoxes;}
++      for (auto viewer:_score->getViewer()) {
++            auto view=dynamic_cast<Ms::ScoreView*>(viewer);if (!view) continue;
++            view->setNotePreviewColors(owner,colors,markers);
+             if (owner==&_baseOwner) view->setActiveNotePreview(owner,_activePreviewTick);
+             if (!_previewViews.contains(view)) _previewViews.append(view);
+             }
+       }
+ 
++
+ void ScoreObserver::setActiveScorePreview(int tick)
+       {
+       _activePreviewTick=tick;
+@@ -487,7 +530,7 @@ void ScoreObserver::clearPreview(QObject* owner)
+       { for (auto& view : _previewViews) if (view) view->setNotePreviewColors(owner, {}); }
+ void ScoreObserver::clearNotePreviewColors() { clearPreview(this); }
+ void ScoreObserver::clearAllPreviews()
+-      { clearPreview(this); clearPreview(&_baseOwner); _baseColors.clear(); _previewViews.clear(); _activePreviewTick=-1; }
++      { clearPreview(this); clearPreview(&_baseOwner); _baseColors.clear(); _baseChordBoxes.clear(); _previewViews.clear(); _activePreviewTick=-1; }
+ 
+ static QString localPath(const QString& path)
+       { const QUrl url(path); return url.isLocalFile() ? url.toLocalFile() : path; }
+diff --git a/mscore/plugin/api/scoreobserver.h b/mscore/plugin/api/scoreobserver.h
+index 5e463d884..60e8a6f3d 100644
+--- a/mscore/plugin/api/scoreobserver.h
++++ b/mscore/plugin/api/scoreobserver.h
+@@ -23,6 +23,7 @@
+ 
+ namespace Ms {
+ class ScoreView;
++class Page;
+ namespace PluginAPI {
+ class Score;
+ 
+@@ -43,6 +44,8 @@ class ScoreObserver : public QObject {
+       QString _fingerprint;
+       QVector<int> _measureStarts;
+       NotePreviewColors _baseColors;
++      // Geometry only; page keys are opaque and cleared with the base layer.
++      QHash<const Ms::Page*, QVector<QRectF>> _baseChordBoxes;
+       QObject _baseOwner;
+       int _activePreviewTick = -1;
+       void applyPreview(QObject* owner, const QVariantList& notes);
+diff --git a/mscore/plugin/qmlplugin.cpp b/mscore/plugin/qmlplugin.cpp
+index c402f3304..1df288214 100644
+--- a/mscore/plugin/qmlplugin.cpp
++++ b/mscore/plugin/qmlplugin.cpp
+@@ -14,6 +14,9 @@
+ #include <QDockWidget>
+ #include <QMainWindow>
+ #include <QTimer>
++#include <QQuickWindow>
++#include <QApplication>
++#include <QCloseEvent>
+ 
+ #include "libmscore/musescoreCore.h"
+ 
+@@ -53,6 +56,46 @@ void QmlPlugin::focusPanel()
+       _panelDock->show();_panelDock->raise();_panelDock->activateWindow();
+       if (_panelDock->widget()) _panelDock->widget()->setFocus(Qt::OtherFocusReason);
+       }
++QQuickItem* QmlPlugin::detailPanelHost() const
++      { return _detailWindow ? _detailWindow->contentItem() : nullptr; }
++bool QmlPlugin::detailPanelVisible() const
++      { return _detailDock && _detailDock->isVisible(); }
++bool QmlPlugin::eventFilter(QObject* object, QEvent* event)
++      {
++      if (object==_detailDock && event->type()==QEvent::Close) emit panelDetailClosed();
++      return QQuickItem::eventFilter(object,event);
++      }
++void QmlPlugin::showDetailPanel(bool visible)
++      {
++      if (!visible) {if (_detailDock) _detailDock->hide();return;}
++      if (!_panelDock) return;
++      auto main=qobject_cast<QMainWindow*>(_panelDock->parentWidget());if (!main) return;
++      if (!_detailDock) {
++            QString title=property("detailPanelTitle").toString();
++            if (title.isEmpty()) title=_panelDock->windowTitle()+tr(" - Details");
++            _detailDock=new QDockWidget(title,main);_detailDock->setObjectName("pluginDetailDock");
++            _detailWindow=new QQuickWindow();_detailWindow->setObjectName("pluginDetailWindow");
++            const QColor background=property("detailPanelBackground").value<QColor>();
++            _detailWindow->setColor(background.isValid() ? background : QApplication::palette().color(QPalette::Window));
++            _detailDock->setWidget(QWidget::createWindowContainer(_detailWindow));
++            _detailDock->setMinimumWidth(240);_detailDock->resize(360,740);
++            _detailDock->installEventFilter(this);
++            connect(_detailDock,&QDockWidget::visibilityChanged,this,[this](bool){emit panelDetailChanged();});
++            // One shared QML tree, no second plugin / observer / analysis worker.
++            // The container owns its QWindow; close the auxiliary surface with the plugin root.
++            connect(this,&QObject::destroyed,_detailDock,&QDockWidget::deleteLater);
++            main->addDockWidget(Qt::RightDockWidgetArea,_detailDock);
++            main->resizeDocks({_detailDock.data()},{360},Qt::Horizontal);
++            emit panelDetailChanged();
++            }
++      _detailDock->show();_detailDock->raise();
++      }
++void QmlPlugin::focusDetailPanel()
++      {
++      showDetailPanel(true);if (!_detailDock) return;
++      _detailDock->activateWindow();
++      if (_detailDock->widget()) _detailDock->widget()->setFocus(Qt::OtherFocusReason);
++      }
+ bool QmlPlugin::panelFloating() const { return _panelDock && _panelDock->isFloating(); }
+ void QmlPlugin::setPanelFloating(bool floating)
+       { if (_panelDock) { _panelDock->setFloating(floating); _panelDock->show(); } }
+diff --git a/mscore/plugin/qmlplugin.h b/mscore/plugin/qmlplugin.h
+index 56d3a2df1..a7721ceb9 100644
+--- a/mscore/plugin/qmlplugin.h
++++ b/mscore/plugin/qmlplugin.h
+@@ -19,6 +19,7 @@
+ #include "libmscore/utils.h"
+ 
+ class QDockWidget;
++class QQuickWindow;
+ 
+ namespace Ms {
+ 
+@@ -51,7 +52,11 @@ class QmlPlugin : public QQuickItem {
+       Q_OBJECT
+       Q_PROPERTY(QString panelPlacement READ panelPlacement NOTIFY panelDockChanged)
+       Q_PROPERTY(bool panelFloating READ panelFloating NOTIFY panelDockChanged)
++      Q_PROPERTY(QQuickItem* detailPanelHost READ detailPanelHost NOTIFY panelDetailChanged)
++      Q_PROPERTY(bool detailPanelVisible READ detailPanelVisible NOTIFY panelDetailChanged)
+       QPointer<QDockWidget> _panelDock;
++      QPointer<QDockWidget> _detailDock;
++      QPointer<QQuickWindow> _detailWindow;
+       QString _panelPlacement;
+ 
+       QString _menuPath;
+@@ -62,6 +67,7 @@ class QmlPlugin : public QQuickItem {
+       QString _description;
+ 
+    protected:
++      bool eventFilter(QObject* object, QEvent* event) override;
+       QString _filePath;            // the path of the source file, without file name
+       MuseScoreCore* msc()             { return MuseScoreCore::mscoreCore; }
+       const MuseScoreCore* msc() const { return MuseScoreCore::mscoreCore; }
+@@ -76,8 +82,14 @@ class QmlPlugin : public QQuickItem {
+       bool panelFloating() const;
+       Q_INVOKABLE void setPanelFloating(bool floating);
+       Q_INVOKABLE void focusPanel();
++      QQuickItem* detailPanelHost() const;
++      bool detailPanelVisible() const;
++      Q_INVOKABLE void showDetailPanel(bool visible);
++      Q_INVOKABLE void focusDetailPanel();
+    signals:
+       void panelDockChanged();
++      void panelDetailChanged();
++      void panelDetailClosed();
+    public:
+ 
+       void setMenuPath(const QString& s)   { _menuPath = s;    }
+diff --git a/mscore/scoreview.cpp b/mscore/scoreview.cpp
+index bbc32573a..95479f4b3 100644
+--- a/mscore/scoreview.cpp
++++ b/mscore/scoreview.cpp
+@@ -1223,8 +1223,16 @@ static void drawDebugInfo(QPainter& p, const Element* _e)
+ //   drawElements
+ //---------------------------------------------------------
+ 
++QRectF ScoreView::previewEditBounds() const
++      {
++      if (!editData.element || (!editMode() && state!=ViewState::DRAG_OBJECT)) return {};
++      const qreal margin=editData.element->spatium();
++      return editData.element->canvasBoundingRect().adjusted(-margin,-margin,margin,margin);
++      }
++
+ void ScoreView::drawElements(QPainter& painter, QList<Element*>& el, Element* editElement)
+       {
++      const auto protectedArea=previewEditBounds();
+       std::stable_sort(el.begin(), el.end(), elementLessThan);
+       for (const Element* e : el) {
+             e->itemDiscovered = 0;
+@@ -1260,7 +1268,7 @@ void ScoreView::drawElements(QPainter& painter, QList<Element*>& el, Element* ed
+             else e->draw(&painter);
+             if (previewEntry && e->visible()) {
+                   auto drawLabel = [&](const QString& text, const QRectF& box, bool chord) {
+-                        if (box.isEmpty()) return;
++                        if (box.isEmpty() || box.translated(e->canvasPos()).intersects(protectedArea)) return;
+                         painter.save();
+                         painter.setFont(notePreviewFont(e->spatium(), chord));
+                         painter.setPen(Qt::NoPen);
+@@ -1477,13 +1485,16 @@ void ScoreView::paint(const QRect& r, QPainter& p)
+                   }
+             }
+       if (!score()->printing() && !fotoMode()) {
++            const auto protectedArea=previewEditBounds();
+             _notePreviewLayers.forEachChord([&](const NotePreviewEntry& entry, bool active) {
+                   const auto box=entry.chordBox.translated(entry.anchor);
+-                  if (!box.intersects(fr)) return;
++                  if (!box.intersects(fr) || box.intersects(protectedArea)) return;
+                   p.save();p.translate(box.topLeft());
+-                  p.setPen(Qt::NoPen);
+-                  p.setBrush(active ? entry.highlightBackground : QColor(255,255,255,235));
+-                  p.drawRoundedRect(QRectF(QPointF(),box.size()),entry.spatium*.18,entry.spatium*.18);
++                  if (entry.chordMask) {
++                        p.setPen(Qt::NoPen);
++                        p.setBrush(active ? entry.highlightBackground : QColor(255,255,255,235));
++                        p.drawRoundedRect(QRectF(QPointF(),box.size()),entry.spatium*.18,entry.spatium*.18);
++                        }
+                   p.setPen(active ? entry.highlightColor : entry.chordColor);
+                   p.setFont(entry.chordFont);p.drawText(entry.primaryBox,Qt::AlignCenter,entry.chord);
+                   p.setFont(entry.degreeFont);p.drawText(entry.secondaryBox,Qt::AlignCenter,entry.degree);
+@@ -5723,10 +5734,10 @@ Element* ScoreView::getEditElement()
+ //   onElementDestruction
+ //---------------------------------------------------------
+ 
+-void ScoreView::setNotePreviewColors(QObject* owner, const NotePreviewColors& colors)
++void ScoreView::setNotePreviewColors(QObject* owner, const NotePreviewColors& colors, const NotePreviewMarkers& markers)
+       {
+       if (!owner) return;
+-      if (!_notePreviewOwners.contains(owner) && !colors.isEmpty()) {
++      if (!_notePreviewOwners.contains(owner) && (!colors.isEmpty() || !markers.isEmpty())) {
+             _notePreviewOwners.insert(owner);
+             connect(owner, &QObject::destroyed, this, [this, owner]() {
+                   _notePreviewOwners.remove(owner);
+@@ -5734,7 +5745,7 @@ void ScoreView::setNotePreviewColors(QObject* owner, const NotePreviewColors& co
+                   if (!dirty.isEmpty()) dataChanged(dirty);
+                   });
+             }
+-      const QRectF dirty = _notePreviewLayers.replace(owner, colors);
++      const QRectF dirty = _notePreviewLayers.replace(owner, colors, markers);
+       if (!dirty.isEmpty()) dataChanged(dirty);
+       }
+ 
+@@ -5744,7 +5755,11 @@ void ScoreView::setActiveNotePreview(QObject* owner, int tick)
+       if (!dirty.isEmpty()) dataChanged(dirty);
+       }
+ bool ScoreView::activateNotePreview(const QPointF& canvasPosition)
+-      { return _notePreviewLayers.activate(canvasPosition); }
++      {
++      // Native text editing owns double clicks until it ends; hidden overlays must not seize them.
++      if (editMode() || state==ViewState::DRAG_OBJECT) return false;
++      return _notePreviewLayers.activate(canvasPosition);
++      }
+ 
+ void ScoreView::onElementDestruction(Element* e)
+       {
+diff --git a/mscore/scoreview.h b/mscore/scoreview.h
+index aa32f9c68..ef8570f39 100644
+--- a/mscore/scoreview.h
++++ b/mscore/scoreview.h
+@@ -278,6 +278,7 @@ class ScoreView : public QWidget, public MuseScoreView {
+ 
+       void setShadowNote(const QPointF&);
+       void drawElements(QPainter& p,QList<Element*>& el, Element* editElement);
++      QRectF previewEditBounds() const;
+       bool dragTimeAnchorElement(const QPointF& pos);
+       bool dragMeasureAnchorElement(const QPointF& pos);
+       virtual void lyricsTab(bool back, bool end, bool moveOnly) override;
+@@ -526,7 +527,7 @@ class ScoreView : public QWidget, public MuseScoreView {
+       FotoLasso* fotoLasso() const    { return _foto;    }
+       Element* getEditElement();
+       void onElementDestruction(Element*) override;
+-      void setNotePreviewColors(QObject* owner, const NotePreviewColors& colors);
++      void setNotePreviewColors(QObject* owner, const NotePreviewColors& colors, const NotePreviewMarkers& markers = {});
+       void setActiveNotePreview(QObject* owner, int tick);
+       bool activateNotePreview(const QPointF& canvasPosition);
+ 
+diff --git a/mtest/mscore/pluginhost/tst_pluginhost.cpp b/mtest/mscore/pluginhost/tst_pluginhost.cpp
+index 5792e6ec0..1b7dae3db 100644
+--- a/mtest/mscore/pluginhost/tst_pluginhost.cpp
++++ b/mtest/mscore/pluginhost/tst_pluginhost.cpp
+@@ -15,6 +15,8 @@
+ #include "mscore/plugin/api/util.h"
+ #include "mscore/plugin/api/scoreobserver.h"
+ #include "libmscore/chord.h"
++#include "libmscore/harmony.h"
++#include "libmscore/measure.h"
+ #include "libmscore/note.h"
+ #include "libmscore/segment.h"
+ 
+@@ -71,7 +73,7 @@ class TestPluginHost : public QObject {
+             for(auto window:QGuiApplication::allWindows()) {
+                   auto view=qobject_cast<QQuickView*>(window);
+                   auto root=view ? qobject_cast<QmlPlugin*>(view->rootObject()) : nullptr;
+-                  if(root && root->version()=="1.2.0") {panel=root;panelView=view;break;}
++                  if(root && root->version()=="1.3.0") {panel=root;panelView=view;break;}
+                   }
+             for(auto candidate:main->findChildren<QDockWidget*>())
+                   if(candidate->windowTitle()=="Harmony Assistant") {dock=candidate;break;}
+@@ -144,6 +146,24 @@ class TestPluginHost : public QObject {
+             QCOMPARE(panel->panelPlacement(),QString("top"));
+             main->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("top.png"));
+             QVERIFY(panel->property("ribbon").toBool());
++            QTRY_VERIFY(panel->detailPanelVisible());
++            auto details=main->findChild<QDockWidget*>("pluginDetailDock");QVERIFY(details);
++            QCOMPARE(main->dockWidgetArea(details),Qt::RightDockWidgetArea);
++            QVERIFY(panel->detailPanelHost());
++            QCOMPARE(panel->findChildren<PluginAPI::ScoreObserver*>().size(),1);
++            QCOMPARE(panel->findChildren<QObject*>("harmonyConfiguration").size(),1);
++            auto summary=panel->findChild<QQuickItem*>("harmonySummary");QVERIFY(summary);
++            QCOMPARE(summary->window(),panel->detailPanelHost()->window());
++            auto detailImage=panel->detailPanelHost()->window()->grabWindow();
++            QVERIFY(!detailImage.isNull());
++            detailImage.save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("dual-details.png"));
++            details->setFloating(true);details->resize(800,680);QTest::qWait(50);
++            QVERIFY(details->isFloating());QTRY_VERIFY(panel->property("expanded").toBool());
++            details->setFloating(false);main->addDockWidget(Qt::RightDockWidgetArea,details);
++            main->resizeDocks({details},{360},Qt::Horizontal);QTest::qWait(30);
++            details->close();QTest::qWait(30);QVERIFY(!panel->detailPanelVisible());
++            QVERIFY(QMetaObject::invokeMethod(panel,"toggleDetailPanel"));
++            QTRY_VERIFY(panel->detailPanelVisible());
+             auto ribbonImage=panelView->grabWindow();
+             QVERIFY(!ribbonImage.isNull());
+             ribbonImage.save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("ribbon.png"));
+@@ -152,6 +172,8 @@ class TestPluginHost : public QObject {
+             dock->resize(800,680);QTest::qWait(50);
+             QVERIFY(!panel->property("ribbon").toBool());
+             QVERIFY(panel->property("expanded").toBool());
++            QTRY_VERIFY(!panel->detailPanelVisible());
++            QCOMPARE(summary->window(),panelView);
+             auto floatingImage=panelView->grabWindow();
+             QVERIFY(!floatingImage.isNull());
+             floatingImage.save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("floating-panel.png"));
+@@ -160,6 +182,7 @@ class TestPluginHost : public QObject {
+             main->addDockWidget(Qt::RightDockWidgetArea,dock);QTest::qWait(50);
+             QCOMPARE(panel->panelPlacement(),QString("right"));
+             dock->close();QTest::qWait(50);
++            QTRY_VERIFY(main->findChildren<QDockWidget*>("pluginDetailDock").isEmpty());
+             // Repeated open/close must not retain previews or dereference a destroyed dock.
+             main->pluginTriggered(plugin);QTest::qWait(50);
+             // This fixture deliberately skips main()'s workspace/audio initialization.
+@@ -169,6 +192,107 @@ class TestPluginHost : public QObject {
+             QTest::qWait(50);
+             main->hide();
+             }
++      void changeTickWithoutNewOnset()
++            {
++            auto main=Ms::mscore;
++            auto score=main->readScore(QString(TESTROOT)+"/mtest/mscore/scoreobserver/piano.mscx");
++            QVERIFY(score);main->setCurrentScoreView(main->appendScore(score));
++            main->resize(1100,800);main->show();QTest::qWait(30);
++            PluginAPI::Score wrapped(score);PluginAPI::ScoreObserver observer;observer.setScore(&wrapped);
++            auto first=observer.snapshot(0,4,8).value("notes").toList().front().toMap();
++            first["chord"]="C";first["chordTick"]=0;first["chordUntil"]=240;
++            auto second=first;second["chord"]="Am";second["chordTick"]=240;second["chordUntil"]=480;
++            observer.setScorePreview({first,second});
++            const auto segment=score->firstSegment(SegmentType::ChordRest);
++            const auto next=score->tick2segment(Fraction::fromTicks(480),false,SegmentType::ChordRest);
++            const auto bass=toChord(segment->element(4))->notes().front();
++            const qreal start=segment->canvasPos().x(),half=(start+next->canvasPos().x())/2;
++            auto view=main->currentScoreView();QSignalSpy activation(&observer,&PluginAPI::ScoreObserver::previewActivated);
++            QMap<int,qreal> hits;
++            for(int dy=-qRound(bass->spatium()*40);dy<0 && hits.size()<2;dy+=2)
++                  for(qreal x=start-2;x<half+40 && hits.size()<2;x+=1) {
++                        const auto point=QPointF(x,bass->canvasPos().y()+dy);
++                        if(!view->activateNotePreview(point))continue;
++                        const int tick=activation.last().at(0).toInt();if(!hits.contains(tick))hits.insert(tick,x);
++                        }
++            QVERIFY(hits.contains(0));QVERIFY(hits.contains(240));
++            QVERIFY(qAbs(hits[0]-start)<=2);QVERIFY(qAbs(hits[240]-half)<=2);
++            observer.setActiveScorePreview(300);view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("no-onset-change.png"));
++            observer.clearAllPreviews();main->hide();
++            }
++      void annotationPrioritiesWhileMoving()
++            {
++            auto main=Ms::mscore;
++            auto score=main->readScore(QString(TESTROOT)+"/mtest/mscore/scoreobserver/piano.mscx");
++            QVERIFY(score);main->setCurrentScoreView(main->appendScore(score));
++            main->resize(1100,800);main->show();QTest::qWait(50);
++            auto view=main->currentScoreView();
++            PluginAPI::Score wrapped(score);PluginAPI::ScoreObserver observer;
++            observer.setScore(&wrapped);
++            auto segment=score->tick2segment(Fraction::fromTicks(480),false,SegmentType::ChordRest);
++            auto harmony=new Harmony(score);harmony->setTrack(0);segment->add(harmony);
++            harmony->setHarmony("F7");score->doLayout();QTest::qWait(20);
++            QVariantMap anchor;
++            for (const auto& descriptor:observer.snapshot(480,0,8).value("notes").toList()) {
++                  const auto value=descriptor.toMap();
++                  if(value.value("tick").toInt()==480 && value.value("track").toInt()==0){anchor=value;break;}
++                  }
++            QVERIFY(!anchor.isEmpty());anchor["chord"]="Cmaj13";anchor["degree"]="Imaj13";
++            anchor["chordTick"]=480;anchor["chordUntil"]=960;anchor["preferExistingHarmony"]=true;
++            const auto baseline=view->grab().toImage();
++            auto onlyChord=anchor;onlyChord["degree"]="";
++            observer.setScorePreview({onlyChord});
++            QCOMPARE(view->grab().toImage(),baseline); // native F7 remains, duplicate analysis stays in panel
++            observer.setScorePreview({anchor});const auto preferred=view->grab().toImage();
++            auto degreeOnly=anchor;degreeOnly["chord"]="";
++            observer.setScorePreview({degreeOnly});QCOMPARE(view->grab().toImage(),preferred);
++            QVERIFY(preferred!=baseline);
++            auto simultaneous=anchor;simultaneous["preferExistingHarmony"]=false;
++            observer.setScorePreview({simultaneous});QVERIFY(view->grab().toImage()!=preferred);
++            // Roman notation retains its own degree while optionally supplementing chord analysis.
++            observer.clearAllPreviews();harmony->setHarmonyType(HarmonyType::ROMAN);
++            harmony->setHarmony("V7");score->doLayout();
++            observer.setScorePreview({anchor});const auto romanPreferred=view->grab().toImage();
++            onlyChord["preferExistingHarmony"]=false;observer.setScorePreview({onlyChord});
++            QCOMPARE(view->grab().toImage(),romanPreferred);
++            observer.clearAllPreviews();harmony->setHarmonyType(HarmonyType::STANDARD);
++            harmony->setHarmony("F7");score->doLayout();
++            observer.setScorePreview({simultaneous});
++            const auto note=toChord(segment->element(0))->notes().front();
++            QPointF hit;bool found=false;
++            for(int dy=-qRound(note->spatium()*24);dy<0 && !found;dy+=2)
++                  for(int dx=2;dx<note->spatium()*12;dx+=2) {
++                        const auto point=note->canvasPos()+QPointF(dx,dy);
++                        if(view->activateNotePreview(point)){hit=point+QPointF(8,8);found=true;break;}
++                        }
++            QVERIFY(found);
++            // Moving selection / changing current function text must not repaint fixed chord text.
++            const auto fixedArea=view->toPhysical(QRectF(hit-QPointF(8,8),QSizeF(note->spatium()*9,note->spatium()*2)));
++            observer.setActiveScorePreview(600); // white inactive mask over white paper is visually identical
++            const auto masked=view->grab(fixedArea).toImage();
++            auto transparent=simultaneous;transparent["chordMask"]=false;
++            observer.setScorePreview({transparent});
++            QVERIFY(view->grab(fixedArea).toImage()!=masked);
++            observer.setScorePreview({simultaneous});
++            const auto fixedPixels=view->grab(fixedArea).toImage();
++            for(int tick:{0,480,0,480}) {
++                  auto current=observer.snapshot(tick,0,8).value("notes").toList();
++                  for(auto& descriptor:current){auto d=descriptor.toMap();d["label"]=tick==0 ? "5" : "thirteen";descriptor=d;}
++                  observer.setNotePreviewColors(current);
++                  QCOMPARE(view->grab(fixedArea).toImage(),fixedPixels);
++                  }
++            observer.clearNotePreviewColors();
++            // Move a native editor over an already cached preview: editor and its caret take priority.
++            harmony->setOffset(harmony->offset()+hit-harmony->canvasBoundingRect().center());
++            view->startEditMode(harmony);QVERIFY(view->textEditMode());
++            QTest::keyClick(view,Qt::Key_Right);
++            const auto editedWithPreview=view->grab().toImage();
++            QVERIFY(!view->activateNotePreview(hit));
++            observer.clearAllPreviews();
++            QCOMPARE(view->grab().toImage(),editedWithPreview);
++            view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("native-editor-priority.png"));
++            view->changeState(ViewState::NORMAL);main->hide();
++            }
+       };
+ QTEST_MAIN(TestPluginHost)
+ #include "tst_pluginhost.moc"
+diff --git a/mtest/mscore/scoreobserver/smoke.qml b/mtest/mscore/scoreobserver/smoke.qml
+index adf87c358..94b57a99d 100644
+--- a/mtest/mscore/scoreobserver/smoke.qml
++++ b/mtest/mscore/scoreobserver/smoke.qml
+@@ -4,7 +4,7 @@ import FileIO 3.0
+ 
+ MuseScore {
+     menuPath: "Plugins.Harmony native smoke"
+-    version: "1.2.0"
++    version: "1.3.0"
+     requiresScore: true
+     FileIO {id: report}
+     onRun: {
+@@ -28,9 +28,11 @@ MuseScore {
+             result.indexMilliseconds = panel.observer.indexBuildMilliseconds
+             result.persistedLabel = panel.configuration.labels["3"]
+             result.persistedStyle = {content:panel.configuration.chordContent,order:panel.configuration.chordOrder,
+-                scale:panel.configuration.chordScale,color:panel.configuration.chordColor,position:panel.configuration.ribbonAlign}
++                scale:panel.configuration.chordScale,color:panel.configuration.chordColor,position:panel.configuration.ribbonAlign,
++                mask:panel.configuration.chordMask,dual:panel.configuration.dualPanel,respect:panel.configuration.respectExistingHarmony}
+             if(result.persistedLabel==="third" && (result.persistedStyle.content!==1 || result.persistedStyle.order!==3 ||
+-                result.persistedStyle.scale!==140 || result.persistedStyle.color!=="#224466" || result.persistedStyle.position!==2))
++                result.persistedStyle.scale!==140 || result.persistedStyle.color!=="#224466" || result.persistedStyle.position!==2 ||
++                result.persistedStyle.mask!==false || result.persistedStyle.dual!==false || result.persistedStyle.respect!==false))
+                 result.failures.push("appearance preferences not restored")
+             if (!result.api) result.failures.push("observer missing")
+             if (result.chord !== "Cmaj13") result.failures.push("chord: " + result.chord)
+@@ -46,6 +48,7 @@ MuseScore {
+             config.allColor=true;config.noteFunctions=true;config.chordLabels=true
+             config.labels["3"]="third";config.colors["3"]="#123abc"
+             config.chordContent=1;config.chordOrder=3;config.chordScale=140;config.chordColor="#224466";config.ribbonAlign=2
++            config.chordMask=false;config.dualPanel=false;config.respectExistingHarmony=false
+             panel.applyPreferences(config)
+             panel.buildAnalysisChunk()
+             if(!panel.analysisRecords.length)result.failures.push("full score analysis missing")
+diff --git a/mtest/mscore/scoreobserver/test-exchange.cjs b/mtest/mscore/scoreobserver/test-exchange.cjs
+index 05669417a..ac5fbcc10 100644
+--- a/mtest/mscore/scoreobserver/test-exchange.cjs
++++ b/mtest/mscore/scoreobserver/test-exchange.cjs
+@@ -8,6 +8,11 @@ assert.throws(()=>p.clean({schema:2}));
+ assert.equal(p.preset(config,'单色').colors['5'],'#34495e');
+ assert.equal(p.clean({schema:1}).ribbonAlign,1);
+ assert.equal(p.clean({schema:1}).chordContent,2);
++assert.equal(p.clean({schema:1}).respectExistingHarmony,true);
++assert.equal(p.clean({schema:1,respectExistingHarmony:false}).respectExistingHarmony,false);
++assert.equal(p.clean({schema:1}).chordMask,true);
++assert.equal(p.clean({schema:1}).dualPanel,true);
++assert.equal(p.clean({schema:1,chordMask:false,dualPanel:false}).chordMask,false);
+ assert.equal(p.clean({schema:1,chordScale:999}).chordScale,100);
+ assert.throws(()=>p.clean({schema:1,chordColor:'red'}));
+ const appearance=p.clean({schema:1,chordScale:150,chordOrder:3,chordContent:1,ribbonAlign:3,ribbonPosition:83,chromaticColor:'#aa3344'});
+diff --git a/mtest/mscore/scoreobserver/tst_scoreobserver.cpp b/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
+index 0e6788fb9..fffa7f7ab 100644
+--- a/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
++++ b/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
+@@ -210,6 +210,26 @@ class TestScoreObserver : public QObject, public MTest {
+             layers.setActiveChord(&owner,1440);inspect();QCOMPARE(activeTick,-1);
+             layers.remove(first);inspect();QCOMPARE(count,1);
+             }
++      void multipleChangesOnOneSustainedNote()
++            {
++            NotePreviewLayers layers;QObject owner;
++            const auto source=reinterpret_cast<const Element*>(quintptr(1));
++            NotePreviewEntry first;first.sourceAnchor=source;first.chord="C";
++            first.chordTick=0;first.chordUntil=240;first.chordBox=QRectF(10,10,40,20);first.bounds=first.chordBox;
++            auto second=first;second.chord="Am";second.chordTick=240;second.chordUntil=480;
++            second.chordBox.translate(60,0);second.bounds=second.chordBox;second.chordMask=false;
++            const NotePreviewMarkers markers{first,second};
++            layers.replace(&owner,{{source,{Qt::red,QRectF(10,40,10,10)}}},markers);
++            layers.setActiveChord(&owner,240);
++            int count=0,active=-1;
++            layers.forEachChord([&](const NotePreviewEntry& entry,bool enabled){++count;if(enabled)active=entry.chordTick;});
++            QCOMPARE(count,2);QCOMPARE(active,240);QCOMPARE(layers.color(source),QColor(Qt::red));
++            QVERIFY(layers.replace(&owner,{{source,{Qt::red,QRectF(10,40,10,10)}}},markers).isEmpty());
++            layers.remove(source);count=0;
++            layers.forEachChord([&](const NotePreviewEntry&,bool){++count;});
++            QCOMPARE(count,0);QVERIFY(!layers.color(source).isValid());
++            // Removal compares opaque identities only: source is deliberately not dereferenceable.
++            }
+       void fixedMarkerHighlightPerformance()
+             {
+             NotePreviewLayers layers;QObject owner;NotePreviewColors colors;
+diff --git a/personal/CHANGELOG.md b/personal/CHANGELOG.md
+index 3c8a0ebf3..d9eb95365 100644
+--- a/personal/CHANGELOG.md
++++ b/personal/CHANGELOG.md
+@@ -2,6 +2,24 @@
+ 
+ 个人版本记录本仓库的个人维护增量；应用上游版本另由 `config.cmake` 管理。历史源码提交尚未追溯归类，此处从首次建立指南开始记录，不代表此前没有个人改动。
+ 
++## 0.5.0 — 2026-10-06
++
++- 类型：和声助手 1.3.0，补齐移动/编辑遮挡、变化节拍锚点、背景遮罩与顶部摘要/右侧详情。上游应用仍为 3.7.0，谱面格式不变。
++- 插件：share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml 的全谱描述符在释放/踏板变化等无新音时也生成独立标记，chordTick 与用于定位乐器的数值 Note 描述符分离；Preferences.js / AppearanceEditor.qml 增加 chordMask、respectExistingHarmony、dualPanel，schema 1 向后兼容、自动读取/原子保存/配置交换。顶部操作三行，保持居中/自定位置，右侧完整内容仍能加宽双列、拖动悬浮；原功能保留。
++- 原生标注：mscore/notepreview.h 分离颜色 QHash 和标记 QVector，一个持续 Note 可对应多次变化；每乐器二分时间索引和小型活动集合不变。QMultiHash 不透明来源索引用于析构时清掉该音所有标记，不调用已析构 Element 的虚函数；旧内联记号描述符仍支持。
++- 原生几何：mscore/plugin/api/scoreobserver.h/.cpp 用变化所在 Measure/System 的节拍 x 锚点，无新音时在相邻 ChordRest 位置之间插值，不使用来源音的位置；同系统/乐器共同四行避让。当前功能标签避开固定记号缓存并复用全谱几何，原谱普通/Nashville 和弦及 Roman 级数可优先保留，另一个字段可补充。背景遮罩关闭后仍避让原谱并保留文字高亮。
++- 编辑优先级：mscore/scoreview.h/.cpp 隐去与当前原生编辑/拖动对象相交的临时标签，编辑状态不消费插件双击；mscore/editelement.cpp 在开始/结束编辑时补齐标记区域刷新。普通选择/播放不移动固定记号；原生对象、光标和快捷键仍走原流程。
++- 通用双面板：mscore/plugin/qmlplugin.h/.cpp 暴露 detailPanelHost/detailPanelVisible、showDetailPanel/focusDetailPanel 和关闭通知；一个辅助 QDockWidget/QQuickWindow 可接受已有 QML 控件的视觉重挂载。默认右侧，标题/背景由插件属性提供；关闭保存偏好，主插件销毁清理辅助面板。不另建 QML engine/ScoreObserver/全谱分析；和声/配置/UI 仍在插件，无 libmscore 模型、Seq、Driver 或音频回调改动。
++- 验证：Release 主程序及三组测试编译/链接；tst_scoreobserver 14、tst_note 11、真实 tst_pluginhost 5 项通过，0 失败/跳过。新增持续音共享源的多个记号与析构清理、真实无新音 tick240 的横坐标、双面板单观察器/控件共享/关闭重开/悬浮返回、原谱和弦/Roman 优先级、遮罩显隐、当前标签移动不遮固定记号、原生和弦文字编辑与方向键光标。JS、固定位置及双面板 QML 测试通过；截图检查。
++- 性能：1000 小节/6000 音符首次索引 23.187 ms；1000 次缓存 snapshot 1.779 ms、context 4.517 ms；数值帧 16.364 ms、全谱色层几何 16.368 ms。6000 音符/1000 标记的单测中，1000 次高亮切换共 0.909 ms（不含屏幕重绘）；实际安装 QML 跨接口 snapshot 10–11 ms、context 18–19 ms。遮罩单测首次对白纸比较白色背景无可见差异，改用有色高亮背景后验证通过，不改生产实现。
++- 部署：独立 msvc.install_harmony_1_3_x64/bin/MuseScore3Evo.exe，保留全部旧安装；同 SDK Qt5QmlModels.dll / Qt5QmlWorkerScript.dll 补齐。启用副本逐文件与父提交比较，保存 .pre-1.3.0.bak 后同步十二个发布文件。配置 restart smoke 同一隔离目录连续启动两次验证新增三个开关与已有样式/功能名恢复，临时图层不改原色。
++- 构建环境：PCH 缓存失效时只在构建进程设置 /Y- /MP1，不改上游默认；新增宿主字段后早期部分旧对象混用导致 GUI 创建崩溃，强制重新编译 mscoreapp 全部已有源（仅更新时间戳、不删文件）并重新链接后复验。该早期产物未部署到启用副本。审批服务曾因账户限额暂时无法完成自动审查，恢复后正常通过；没有绕过限制。
++- 边界：密集/过大记号会省略；相邻节拍间位置是视觉插值；原谱和弦优先保留不改变原谱颜色。标注仅屏幕显示、不写 undo/MSCX/PDF；真实音频/MIDI 硬件与长会话未验收，不承诺零开销或 DAW 硬实时。
++- 日志：msvc.build_harmony_release_x64/harmony-1-3-build.log、harmony-1-3-recompile.log、harmony-1-3-install.log、harmony-gui-1-3/gui.txt、harmony-observer-1-3/gui.txt、harmony-note-1-3/gui.txt；插件 tests/native-smoke-installed-1-3 与 native-gui-1-3。旧日志及首次调查基线保留。
++- Git 父提交：9a5ae07ec43b3c6aacd53692c199b8f94ced8e75。
++- Git 提交主题：feat(plugins): anchor harmonic changes and share detail docks。
++- 提交定位：personal-v0.5.0 标签指向本次提交；git rev-parse personal-v0.5.0 查询 SHA。核对 origin/3.x 后普通 push 分支/标签，不强推。
++
+ ## 0.4.0 — 2026-10-05
+ 
+ - 类型：和声助手 1.2.0 显示与交互完善；上游应用仍为 3.7.0，数据格式不变。
+diff --git a/personal/VERSION b/personal/VERSION
+index 1d0ba9ea1..8f0916f76 100644
+--- a/personal/VERSION
++++ b/personal/VERSION
+@@ -1 +1 @@
+-0.4.0
++0.5.0
+diff --git a/personal/docs/01-architecture.md b/personal/docs/01-architecture.md
+index 832a436a9..174930778 100644
+--- a/personal/docs/01-architecture.md
++++ b/personal/docs/01-architecture.md
+@@ -80,3 +80,5 @@
+ `mscore/plugin/api/scoreobserver.*` 在 GUI 线程提供数值快照与 Seq 位置事件；`mscore/notepreview.h` 在 ScoreView 内维护临时图层。核心 Note 只增加 draw 重载，默认绘制/文件格式/音频回调保持原语义。插件发布快照在 `share/plugins/HarmonyAssistant/`。0.3.0 的 QmlPlugin 暴露停靠位置/悬浮状态；ScoreObserver 扩展踏板/时序快照、分批分析帧、两个屏幕层和原子文本/配置读写。谱面解释、交换格式和颜色规则仍在插件；不扩展音频线程或文件格式。详见 [10](10-score-observer.md)。
+ 
+ 0.4.0 固定标记的几何和活动索引留在 NotePreviewLayers，ScoreView::paint 屏幕绘制，events.cpp 双击转发与 QmlPlugin::focusPanel 为局部接线。音乐模板、离调强调与样式配置仍在插件；没有新增模型/音频依赖。
++
++0.5.0 将固定记号从音符颜色映射分离为时间标记向量，来源地址仅作析构清理。QmlPlugin 可提供一个共享 QML 控件的辅助停靠宿主；不重复创建分析或连接音频。
+diff --git a/personal/docs/04-feature-map.md b/personal/docs/04-feature-map.md
+index de1040734..9d69f02bc 100644
+--- a/personal/docs/04-feature-map.md
++++ b/personal/docs/04-feature-map.md
+@@ -79,3 +79,5 @@ rg -n 'QSKIP|add_test|subdirs|MTEST_LINK_MSCOREAPP' mtest
+ 当前和弦、罗马级数、功能音和键盘在 `share/plugins/HarmonyAssistant/`；真实播放观察在 `mscore/plugin/api/scoreobserver.*`；屏幕配色在 `mscore/notepreview.h` 与 ScoreView，颜色不写模型。踏板保持与有限琶音窗口、全谱配色/文字、JSON/CSV 分析交换和配置在插件及通用 API；QmlPlugin 停靠桥接暴露实际位置/悬浮状态。验证为 `mtest/mscore/scoreobserver`、实际 Widgets/QML 宿主 `mtest/mscore/pluginhost` 和相邻 `mtest/libmscore/note`。接口与合并点见 [10](10-score-observer.md)。
+ 
+ 0.4.0 和声显示入口：share/plugins/HarmonyAssistant/AppearanceEditor.qml 配置位置/顺序/颜色/字体，ColorOption.qml 选色，StableLabel.qml 固定行高与全文提示。原生固定记号、高亮和双击见 scoreobserver.*、notepreview.h、ScoreView::paint / activateNotePreview、events.cpp；真实交互测试为 tst_pluginhost。
++
++0.5.0 新入口：AppearanceEditor 配置原谱优先、背景遮罩、顶部/右侧共存；applyPreview / previewTickX 实现和声变化 x 锚点；QmlPlugin::showDetailPanel 接受一个已有控件树。编辑遮挡接线见 ScoreView::previewEditBounds / editelement.cpp，回归为 tst_pluginhost。
+diff --git a/personal/docs/05-piano-development.md b/personal/docs/05-piano-development.md
+index 81aabd56e..3fe4e3c25 100644
+--- a/personal/docs/05-piano-development.md
++++ b/personal/docs/05-piano-development.md
+@@ -89,3 +89,5 @@
+ 个人 0.2.0 的 ScoreObserver 提供按声部持续音和 Seq activeNoteEvents；插件实现和弦识别。播放音高与 writtenPitch/TPC 分开，跨分谱投射，0.3.0 的 contextSnapshot 另提供记谱踏板区间保持音及限小节/休止截断的短时聚合；它模拟踏板状态，不估计声音衰减。即时音列表和推断上下文分开。ScoreView 色层只作用屏幕，不影响撤销/保存/导出；保留编辑选中颜色及播放标记。参考 [10](10-score-observer.md)。
+ 
+ 0.4.0 和弦/级数记号固定在乐器顶谱表上方同一行，播放仅高亮；低音锚点双击以 Part::startTrack 聚焦整乐器。小调 V/导音允许升七级的离调强调规则属于插件，不能视为新的声音识别/踏板算法。
++
++0.5.0 释放/踏板导致和弦变化但没有新音时，插件仍生成变化 tick 的标记；来源持续音可以在上一系统，几何取变化所在系统。该变化只影响分析展示，不修改 NoteEvent 或踏板解释。
+diff --git a/personal/docs/06-build-and-test.md b/personal/docs/06-build-and-test.md
+index bfa47fdb5..2301f97de 100644
+--- a/personal/docs/06-build-and-test.md
++++ b/personal/docs/06-build-and-test.md
+@@ -112,3 +112,5 @@ Pop-Location
+ tst_scoreobserver 增加踏板边界、时序聚合/休止、全谱帧与原子配置测试；tst_note 保持原测试内容。实际安装插件 smoke 可用 `python personal/tools/test_harmony_host.py <新程序exe> <独立目录> <安装目录内主QML>`；先创建 -c 目录再启动，避免默认设置回退。通过项、性能与限制见个人更新日志 0.3.0。
+ 
+ 0.4.0 使用 msvc.install_harmony_1_2_x64 独立安装，另需同 SDK Qt5QmlModels.dll / Qt5QmlWorkerScript.dll。GUI staging 测试可能从 SDK PATH 找到 DLL，最终必须脱离该 PATH 运行实际安装 smoke；同一 -c 目录运行两次验证配置恢复。Qt GUI fixture 关闭硬件音序器，不能替代设备验收。
++
++0.5.0 使用 msvc.install_harmony_1_3_x64。新增 QmlPlugin/NotePreviewLayers 字段后必须统一编译所有依赖该头文件的对象，再链接主程序及 GUI 测试；本机 PCH 无效时使用进程 _CL_=/Y- /MP1。只增量重编少数对象可能产生 ABI 混用，不能用一次链接成功代替真实宿主测试。
+diff --git a/personal/docs/10-score-observer.md b/personal/docs/10-score-observer.md
+index 8fc7ba6cb..d0f5fa580 100644
+--- a/personal/docs/10-score-observer.md
++++ b/personal/docs/10-score-observer.md
+@@ -1,4 +1,4 @@
+-# 10 通用乐谱观察与临时音符预览（个人版本 0.4.0）
++# 10 通用乐谱观察与临时音符预览（个人版本 0.5.0）
+ 
+ 和声助手采用插件 + 最小原生接口。纯插件可完成和弦解释、级数、功能标签和界面，但标准 API 没有逐拍播放信号和独立临时色层；反复写 Note.color 会影响撤销、保存与排版。因此原生侧只提供可供其他插件复用的查询/预览能力，音乐解释留在独立 QML/JS。
+ 
+@@ -87,3 +87,9 @@ setActiveScorePreview(tick) 在每乐器有序标记索引二分查当前区间
+ 命中 ScoreView::activateNotePreview 后向弱 QObject 接收者调用 activatePreview，发出 previewActivated(tick, partStartTrack)。events.cpp 仅在左键双击命中时消费事件。插件 focusPanel() 聚焦已有停靠窗口，不强制悬浮；和声插件决定停止时选位置、横条打开详情，播放中不改变播放位置。QPointer 防止销毁回调；Element 键仍禁止解引用。
+ 
+ 真实 GUI suite 验证固定行、普通鼠标双击、低音锚点整乐器跳转和颜色对话框。新增 fixedMarkerHighlightAndStyle / fixedMarkerHighlightPerformance；已测性能与边界以 CHANGELOG 0.4.0 为准。
++
++0.5.0：独立标记、遮罩与共享详情
++
++描述符 chordTick 可不同于来源 Note.tick；来源只数值定位乐器及析构身份。对应变化节拍有 ChordRest 用 segment.pagePos().x，无新音则按相邻节拍 x 插值，使用变化 Measure/System/Page。NotePreviewMarkers 独立存储，颜色表仍按 Note 查找；同一源多个变化不会互相覆盖。chordMask 默认 true；false 仅关背景，不关高亮/碰撞避让。preferExistingHarmony 默认由插件传 true，同 tick/Part 的 Harmony 可清除重复 chord 或 degree 字段，不更改原谱。当前层复用基础标签框并避开固定记号；原生编辑区域优先显示原对象和光标。
++
++QmlPlugin 的 detailPanelHost 是弱窗口对应的 QQuickItem，detailPanelVisible 通知实际显示状态；showDetailPanel(bool) 创建/显隐单个辅助停靠窗口，focusDetailPanel 显式聚焦，panelDetailClosed 区分用户关闭。可选 detailPanelTitle/detailPanelBackground 由 QML 提供。插件通过 visual parent 重挂载同一控件，QObject ownership 保留在原根；没有第二个 QQmlEngine、ScoreObserver 或分析任务。辅助容器拥有 QWindow，插件销毁后 deleteLater 清理 dock；主面板关闭和设置持久化仍沿原生命周期。
+diff --git a/personal/docs/README.md b/personal/docs/README.md
+index 089fc41cb..5e3e5ed16 100644
+--- a/personal/docs/README.md
++++ b/personal/docs/README.md
+@@ -54,4 +54,4 @@ TSV 包含主题、源码路径、搜索锚点、基准行号、职责与邻近
+ 
+ ## 个人扩展：和声辅助
+ 
+-个人版本 0.4.0 提供通用播放观察、踏板/时序快照、屏幕临时颜色/标注和自适应停靠，和声解释仍在独立插件；入口与边界见 [10 通用观察/预览](10-score-observer.md)。
++个人版本 0.5.0 提供通用播放观察、踏板/时序快照、屏幕临时颜色/标注和自适应停靠，和声解释仍在独立插件；入口与边界见 [10 通用观察/预览](10-score-observer.md)。
+diff --git a/personal/docs/source-map.tsv b/personal/docs/source-map.tsv
+index ff542627f..06e03143f 100644
+--- a/personal/docs/source-map.tsv
++++ b/personal/docs/source-map.tsv
+@@ -5,7 +5,7 @@ topic	path	symbol	line	role	tests
+ 命令分发	mscore/musescore.cpp	void MuseScore::cmd(QAction* a)	6781	状态检查与事务	-
+ 主窗口更新	mscore/musescore.cpp	void MuseScore::endCmd(bool undoRedo)	6859	UI与插件结束通知	-
+ 快捷键	mscore/shortcut.cpp	Shortcut::getShortcut(	4397	命令注册与查询	-
+-视图命令	mscore/scoreview.cpp	void ScoreView::cmd(const char* s)	2238	视图本地命令表	-
++视图命令	mscore/scoreview.cpp	void ScoreView::cmd(const char* s)	2249	视图本地命令表	-
+ 事件与输入模式	mscore/events.cpp	void ScoreView::changeState(ViewState s)	1128	交互状态切换	-
+ 核心命令	libmscore/cmd.cpp	void Score::cmd(const QAction* a, EditData& ed)	4468	核心命令分发	mtest/libmscore/tools
+ 编辑事务开始	libmscore/cmd.cpp	void Score::startCmd()	199	开启用户撤销单元	mtest/libmscore/readwriteundoreset
+@@ -75,14 +75,17 @@ MIDI左右手拆分	importexport/midiimport/importmidi_lrhand.h	void splitIntoLe
+ 测试构建注册	mtest/CMakeLists.txt	enable_testing()	14	suite注册	-
+ 测试目标	mtest/CreateMtestTarget.cmake	add_test(${TARGET}	105	CTest与QTest接线	-
+ 脚本测试跳过	mtest/testscript/tst_runscripts.cpp	QSKIP(	52	当前不可算运行覆盖	mtest/testscript
+-插件实时观察	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::ScoreObserver(	47	GUI 心跳与生命周期；不修改音频回调	mtest/mscore/scoreobserver
+-持续音缓存	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::ensureIndex(	147	内容状态/范围失效，每声部二分持续音	mtest/mscore/scoreobserver
+-屏幕临时音符颜色	mscore/scoreview.cpp	void ScoreView::setNotePreviewColors(	5726	按 owner 隔离的屏幕色层，旧新局部重绘	mtest/mscore/scoreobserver
+-和声辅助插件	share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml	    function followNativePosition()	714	插件音乐解释、级数、功能音和 GUI 播放合并	mtest/mscore/scoreobserver
+-踏板/琶音上下文	mscore/plugin/api/scoreobserver.cpp	QVariantMap ScoreObserver::contextSnapshot(	297	即时音/上下文分离，小节/休止/踏板边界	mtest/mscore/scoreobserver
+-谱面屏幕标注	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::applyPreview(	351	数值定位、碰撞避让、全谱/当前层	mtest/mscore/pluginhost
+-插件停靠状态	mscore/plugin/qmlplugin.cpp	void QmlPlugin::attachPanelDock(	30	实际区域/悬浮通知，可选横条高度	mtest/mscore/pluginhost
+-插件菜单/析构回归	mtest/mscore/pluginhost/tst_pluginhost.cpp	class TestPluginHost	24	真实 Qt 主窗口、菜单、重排和停靠	mtest/mscore/pluginhost
+-plugin-preview	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::setActiveScorePreview	478	固定区间高亮，不复制全谱色表	mtest/mscore/pluginhost/tst_pluginhost.cpp
+-plugin-preview	mscore/scoreview.cpp	ScoreView::activateNotePreview	5746	固定记号点击命中与弱目标转发	mtest/mscore/pluginhost/tst_pluginhost.cpp
+-plugin-preview	mscore/plugin/qmlplugin.cpp	QmlPlugin::focusPanel	50	聚焦已有插件窗口，保留停靠状态	mtest/mscore/pluginhost/tst_pluginhost.cpp
++插件实时观察	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::ScoreObserver(	48	GUI 心跳与生命周期；不修改音频回调	mtest/mscore/scoreobserver
++持续音缓存	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::ensureIndex(	148	内容状态/范围失效，每声部二分持续音	mtest/mscore/scoreobserver
++屏幕临时音符颜色	mscore/scoreview.cpp	void ScoreView::setNotePreviewColors(	5737	按 owner 隔离的屏幕色层，旧新局部重绘	mtest/mscore/scoreobserver
++和声辅助插件	share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml	    function followNativePosition()	749	插件音乐解释、级数、功能音和 GUI 播放合并	mtest/mscore/scoreobserver
++踏板/琶音上下文	mscore/plugin/api/scoreobserver.cpp	QVariantMap ScoreObserver::contextSnapshot(	298	即时音/上下文分离，小节/休止/踏板边界	mtest/mscore/scoreobserver
++谱面屏幕标注	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::applyPreview(	370	独立和声变化标记、原谱优先与两层避让	mtest/mscore/pluginhost
++插件停靠状态	mscore/plugin/qmlplugin.cpp	void QmlPlugin::attachPanelDock(	33	实际区域/悬浮通知，可选横条高度	mtest/mscore/pluginhost
++插件菜单/析构回归	mtest/mscore/pluginhost/tst_pluginhost.cpp	class TestPluginHost	26	真实 Qt 主窗口、菜单、重排和停靠	mtest/mscore/pluginhost
++plugin-preview	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::setActiveScorePreview	521	固定区间高亮，不复制全谱色表	mtest/mscore/pluginhost/tst_pluginhost.cpp
++plugin-preview	mscore/scoreview.cpp	ScoreView::activateNotePreview	5757	固定记号点击命中与弱目标转发	mtest/mscore/pluginhost/tst_pluginhost.cpp
++plugin-preview	mscore/plugin/qmlplugin.cpp	QmlPlugin::focusPanel	53	聚焦已有插件窗口，保留停靠状态	mtest/mscore/pluginhost/tst_pluginhost.cpp
++plugin-display	mscore/plugin/api/scoreobserver.cpp	static qreal previewTickX	354	变化节拍定位，无新音时插值	mtest/mscore/pluginhost/tst_pluginhost.cpp
++plugin-display	mscore/plugin/qmlplugin.cpp	QmlPlugin::showDetailPanel	68	共享控件的单辅助停靠窗口	mtest/mscore/pluginhost/tst_pluginhost.cpp
++plugin-display	mscore/scoreview.cpp	QRectF ScoreView::previewEditBounds	1226	原生编辑/拖动优先区域	mtest/mscore/pluginhost/tst_pluginhost.cpp
+diff --git a/share/plugins/HarmonyAssistant/AppearanceEditor.qml b/share/plugins/HarmonyAssistant/AppearanceEditor.qml
+index 0eb1a92b2..7edc4e1d5 100644
+--- a/share/plugins/HarmonyAssistant/AppearanceEditor.qml
++++ b/share/plugins/HarmonyAssistant/AppearanceEditor.qml
+@@ -15,6 +15,7 @@ Column {
+         modified(Preferences.clean(next))
+     }
+     UiLabel {text:"显示位置与谱面记号"; font.bold:true; color:"#343a3f"; font.pixelSize:13}
++    Switch {text:"顶部摘要同时显示右侧详情"; checked:configuration.dualPanel; onToggled:if(checked!==configuration.dualPanel)editor.option("dualPanel",checked)}
+     RowLayout {
+         width:parent.width
+         UiLabel {text:"顶栏位置"; color:"#697077"; font.pixelSize:11}
+@@ -49,6 +50,10 @@ Column {
+         model:[{key:"chordColor",name:"记号颜色"},{key:"highlightColor",name:"高亮文字"},{key:"highlightBackground",name:"高亮背景"},{key:"chromaticColor",name:"离调强调"}]
+         ColorOption {width:parent.width; caption:modelData.name; value:configuration[modelData.key]; onEdited:editor.option(modelData.key,color); onChooseRequested:editor.chooseColor(modelData.key,value)}
+     }
++    Switch {text:"优先保留原谱和弦 / 级数"; checked:configuration.respectExistingHarmony; onToggled:if(checked!==configuration.respectExistingHarmony)editor.option("respectExistingHarmony",checked)}
++    Switch {text:"记号背景遮罩"; checked:configuration.chordMask; onToggled:if(checked!==configuration.chordMask)editor.option("chordMask",checked)}
++    UiLabel {width:parent.width; text:"记号对齐和弦变化的时间位置；关闭遮罩后只显示文字，仍避让原谱，当前记号以文字色高亮。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
++    UiLabel {width:parent.width; text:"同位置已有原谱和弦时，分析留在面板，谱面只补充级数；已有罗马级数时只补充和弦。关闭可同时显示，仍会避让。编辑框始终优先。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
+     Switch {text:"强调含调外音的和弦"; checked:configuration.chromaticAccent; onToggled:if(checked!==configuration.chromaticAccent)editor.option("chromaticAccent",checked)}
+     UiLabel {width:parent.width; text:"小调兼容属和弦及导音和弦；强调色表示模板含调外音，不代表唯一和声解释。记号在同一系统统一高度，过密时省略；双击可跳转面板。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
+ }
+diff --git a/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml b/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
+index c3c87a6bf..22f489a7e 100644
+--- a/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
++++ b/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
+@@ -12,7 +12,7 @@ MuseScore {
+     id: root
+     menuPath: "Plugins.Harmony Assistant"
+     description: "钢琴和声助手：持续音识别、级数、音程功能与可选谱面配色。"
+-    version: "1.2.0"
++    version: "1.3.0"
+     requiresScore: true
+     pluginType: "dock"
+     dockArea: "right"
+@@ -26,6 +26,7 @@ MuseScore {
+     property bool expanded: flick.width >= 680
+     property bool advancedNative: observer && typeof observer.contextSnapshot === "function"
+     property bool fixedChordNative: observer && typeof observer.setActiveScorePreview === "function"
++    property bool dualDetailActive:ribbon && configuration.dualPanel && typeof root.detailPanelVisible==="boolean" && root.detailPanelVisible
+     property bool chromaticChord: Harmony.isChromatic(Harmony.rootPcs[keyTonic.currentIndex],keyMode.currentIndex===1,chordRoot,chordDefinition)
+     property color chordInk:configuration.chromaticAccent && chromaticChord ? configuration.chromaticColor : ink
+     property var contextNotes: []
+@@ -38,6 +39,8 @@ MuseScore {
+     property string pendingFileAction: ""
+     property string pendingExport: ""
+     property int preferredRibbonHeight: 140
++    property string detailPanelTitle:"和声助手 · 详细面板"
++    property color detailPanelBackground:"#f4f4f4"
+     property bool started: false
+     property var observer: null
+     property bool surfaceActive: visible && (!observer || observer.surfaceVisible)
+@@ -99,9 +102,34 @@ MuseScore {
+             selectionTrack=track;setScope();displayTick(tick,true)
+         }
+         if(typeof root.focusPanel==="function")root.focusPanel()
+-        if(root.ribbon)detailPopup.open()
++        if(root.ribbon)openDetails()
+         flick.contentY=0
+     }
++    function syncDetailPanel() {
++        if(!started || loadingConfiguration)return
++        if(typeof root.showDetailPanel==="function")root.showDetailPanel(ribbon && configuration.dualPanel)
++        if(!ribbon)detailPopup.visible=false
++    }
++    function toggleDetailPanel() {
++        var c=JSON.parse(JSON.stringify(configuration));c.dualPanel=!dualDetailActive
++        configuration=Preferences.clean(c);configurationTimer.restart();syncDetailPanel()
++    }
++    function openDetails() {
++        if(dualDetailActive) {
++            if(typeof root.focusDetailPanel==="function")root.focusDetailPanel()
++            else root.showDetailPanel(true)
++        }
++        else detailPopup.open()
++    }
++    function openDetailWindow() {
++        var c=JSON.parse(JSON.stringify(configuration));c.dualPanel=false
++        configuration=Preferences.clean(c);syncDetailPanel();configurationTimer.restart();detailPopup.open()
++    }
++    function detailPanelClosed() {
++        if(!started)return
++        var c=JSON.parse(JSON.stringify(configuration));c.dualPanel=false
++        configuration=Preferences.clean(c);configurationTimer.restart()
++    }
+     function chordDescriptor(note,frame) {
+         var d=JSON.parse(JSON.stringify(note))
+         if(fixedChordNative) {
+@@ -112,6 +140,8 @@ MuseScore {
+             d.chordFont=["","Edwin","Arial"][configuration.chordFont]
+             d.chordColor=configuration.chromaticAccent && frame.chromatic ? configuration.chromaticColor : configuration.chordColor
+             d.highlightColor=configuration.highlightColor;d.highlightBackground=configuration.highlightBackground
++            d.preferExistingHarmony=configuration.respectExistingHarmony
++            d.chordMask=configuration.chordMask
+         } else d.chord=configuration.chordContent===0 ? frame.chord : configuration.chordContent===1 ? frame.degree : frame.chord+" · "+frame.degree
+         return d
+     }
+@@ -158,6 +188,7 @@ MuseScore {
+     }
+     function optionsChanged(rebuild) {
+         if(!started || loadingConfiguration)return
++        syncDetailPanel()
+         configurationTimer.restart()
+         if(rebuild!==false) {analysisDirty=true; analysisTimer.stop()}
+         requestRefresh(false)
+@@ -216,19 +247,23 @@ MuseScore {
+             if(frame.root<0){lastChord="";marker=null;continue}
+             // Attribute notes when they are written; later sustained contexts cannot recolor an earlier attack.
+             for(var n=0;n<frame.notes.length;++n)if(frame.notes[n].tick===frame.tick)onset.push(frame.notes[n])
++            var signature=frame.chord+"\t"+frame.degree
++            var changed=signature!==lastChord || (fixedChordNative && onset.length && frame.bar!==lastBar)
++            var newMarker=showChords.checked && changed && frame.notes.length && (fixedChordNative || onset.length) ?
++                chordDescriptor(onset.length ? onset[0] : frame.notes[0],frame) : null
+             for(n=0;n<onset.length;++n) {
+                 var d=JSON.parse(JSON.stringify(onset[n]))
+                 if(scoreColoring.checked && allColor.checked)d.color=colorFor(d.pitch,frame.root,frame.definition)
+                 if(showFunctions.checked)d.label=functionText(d.pitch,frame.root,frame.definition)
+-                if(showChords.checked && n===0 && (frame.chord!==lastChord || (fixedChordNative && frame.bar!==lastBar))) {
+-                    var styled=chordDescriptor(d,frame)
+-                    for(var key in styled)d[key]=styled[key]
++                if(newMarker && n===0) {
++                    for(var key in newMarker)d[key]=newMarker[key]
+                     marker=d
+                 }
+                 if(d.color || d.label || d.chord || d.degree)descriptors.push(d)
+             }
++            if(newMarker && !onset.length) {marker=newMarker;descriptors.push(marker)}
+             if(marker)marker.chordUntil=i+1<analysisRecords.length ? analysisRecords[i+1].tick : frame.tick+480
+-            if(onset.length){lastChord=frame.chord;lastBar=frame.bar}
++            lastChord=signature;lastBar=frame.bar
+         }
+         observer.setScorePreview(descriptors)
+         // The active layer must be last so it can highlight labels during playback.
+@@ -738,6 +773,7 @@ MuseScore {
+                 if(saved.schema)applyPreferences(saved)
+             } else settingsStore.active=true
+         }
++        syncDetailPanel()
+         requestRefresh(true)
+     }
+     onScoreStateChanged: {
+@@ -765,6 +801,7 @@ MuseScore {
+         else if(advancedNative) {analysisDirty=true; scheduleAnalysis()}
+         if (surfaceActive) {followNativePosition(); requestRefresh(false)}
+     }
++    onRibbonChanged:syncDetailPanel()
+     Component.onDestruction: {if (started) {savePreferences(); undoPause = false; restoreColors(true); if(advancedNative)observer.clearAllPreviews()}}
+     Timer {id:configurationTimer; interval:350; onTriggered:savePreferences()}
+     Timer {id:analysisTimer; interval:12; onTriggered:buildAnalysisChunk()}
+@@ -793,6 +830,7 @@ MuseScore {
+         onScoreChanged:requestRefresh(true)
+         onPreviewActivated:root.openAnnotation(tick,track)
+     }
++    Connections {target:root; ignoreUnknownSignals:true; onPanelDetailClosed:root.detailPanelClosed()}
+ 
+     Rectangle {
+         id:backdrop
+@@ -800,13 +838,13 @@ MuseScore {
+         color: "#f4f4f4"
+         Flickable {
+             id: flick
+-            parent:root.ribbon ? detailPopup.contentItem : backdrop
++            parent:root.dualDetailActive ? root.detailPanelHost : root.ribbon ? detailPopup.contentItem : backdrop
+             anchors.fill: parent
+             clip: true
+             contentWidth: width
+             contentHeight: panel.height + 24
+             boundsBehavior: Flickable.StopAtBounds
+-            visible:!root.ribbon || detailPopup.opened
++            visible:!root.ribbon || detailPopup.opened || root.dualDetailActive
+             ScrollBar.vertical: ScrollBar { }
+             Flow {
+                 id: panel
+@@ -1053,7 +1091,8 @@ MuseScore {
+             visible:root.ribbon; anchors.fill:parent; clip:true
+             Item {
+                 id:ribbonGroup; objectName:"harmonyRibbonGroup"
+-                width:Math.max(100,Math.min(630,parent.width-ribbonControls.width-36)); height:parent.height-24
++                width:{var available=Math.max(100,parent.width-ribbonControls.width-36);return available>=630 ? 630 : Math.min(320,available)}
++                height:parent.height-24
+                 anchors.verticalCenter:parent.verticalCenter
+                 x:{var maximum=Math.max(12,parent.width-ribbonControls.width-width-36);
+                     return configuration.ribbonAlign===0 ? 12 : configuration.ribbonAlign===2 ? maximum :
+@@ -1062,8 +1101,8 @@ MuseScore {
+                     anchors.fill:parent; spacing:16
+                     Column {
+                         Layout.preferredWidth:ribbonTones.visible ? 244 : ribbonGroup.width; Layout.alignment:Qt.AlignVCenter; spacing:2
+-                        StableLabel {text:chordText; color:chordInk; font.pixelSize:Math.min(32,Math.max(18,root.height*.22)); font.bold:true}
+-                        StableLabel {text:degreeText+" · "+positionText; color:muted; font.pixelSize:11}
++                        StableLabel {text:chordText; color:chordInk; horizontalAlignment:ribbonTones.visible ? Text.AlignLeft : Text.AlignHCenter; font.pixelSize:Math.min(32,Math.max(18,root.height*.22)); font.bold:true}
++                        StableLabel {text:degreeText+" · "+positionText; color:muted; horizontalAlignment:ribbonTones.visible ? Text.AlignLeft : Text.AlignHCenter; font.pixelSize:11}
+                     }
+                     Flow {
+                         id:ribbonTones; visible:ribbonGroup.width>=540; Layout.fillWidth:true; Layout.alignment:Qt.AlignVCenter; spacing:6
+@@ -1078,8 +1117,12 @@ MuseScore {
+             Column {
+                 id:ribbonControls; width:112; anchors.right:parent.right; anchors.rightMargin:12; anchors.verticalCenter:parent.verticalCenter; spacing:4
+                 ComboBox {width:parent.width; model:["靠左","居中","靠右","自定位置"]; currentIndex:configuration.ribbonAlign; implicitHeight:28; font.pixelSize:11; onActivated:root.setRibbonPosition(currentIndex)}
+-                Button {width:parent.width; text:"详细面板"; onClicked:detailPopup.open(); implicitHeight:28; font.pixelSize:11}
+-                Button {width:parent.width; text:"悬浮"; visible:typeof root.setPanelFloating==="function"; onClicked:root.setPanelFloating(true); implicitHeight:28; font.pixelSize:11}
++                Button {width:parent.width; text:root.dualDetailActive ? "隐藏右侧详情" : "右侧详情"; visible:typeof root.showDetailPanel==="function"; onClicked:root.toggleDetailPanel(); implicitHeight:28; font.pixelSize:11}
++                RowLayout {
++                    width:parent.width; spacing:4
++                    Button {Layout.fillWidth:true; text:"窗口"; onClicked:root.openDetailWindow(); implicitHeight:28; font.pixelSize:11}
++                    Button {Layout.fillWidth:true; text:"悬浮"; visible:typeof root.setPanelFloating==="function"; onClicked:root.setPanelFloating(true); implicitHeight:28; font.pixelSize:11}
++                }
+             }
+         }
+     }
+diff --git a/share/plugins/HarmonyAssistant/Preferences.js b/share/plugins/HarmonyAssistant/Preferences.js
+index bdee6c37f..457ef6d0a 100644
+--- a/share/plugins/HarmonyAssistant/Preferences.js
++++ b/share/plugins/HarmonyAssistant/Preferences.js
+@@ -18,11 +18,11 @@ function defaults() {
+         root:0,quality:0,keyboard:false,settings:false,
+         ribbonAlign:1,ribbonPosition:50,chordContent:2,chordOrder:0,chordFont:0,chordScale:100,
+         chordColor:"#343a3f",highlightColor:"#0043ce",highlightBackground:"#d0e2ff",
+-        chromaticAccent:true,chromaticColor:"#a2191f"};
++        chromaticAccent:true,chromaticColor:"#a2191f",respectExistingHarmony:true,chordMask:true,dualPanel:true};
+ }
+ function clean(source) {
+     if(!source || source.schema!==1) throw Error("配置版本应为 1");
+-    var out=defaults(), booleans=["auto","follow","coloring","allColor","chordLabels","noteFunctions","pedal","manualKey","keyboard","settings","chromaticAccent"];
++    var out=defaults(), booleans=["auto","follow","coloring","allColor","chordLabels","noteFunctions","pedal","manualKey","keyboard","settings","chromaticAccent","respectExistingHarmony","chordMask","dualPanel"];
+     for(var i=0;i<booleans.length;++i) if(typeof source[booleans[i]]==="boolean") out[booleans[i]]=source[booleans[i]];
+     var limits={window:4,scope:1,keyMode:1,keyTonic:16,root:16,quality:28,ribbonAlign:3,ribbonPosition:100,chordContent:2,chordOrder:3,chordFont:2};
+     for(var key in limits) if(typeof source[key]==="number" && source[key]===Math.floor(source[key]) && source[key]>=0 && source[key]<=limits[key])out[key]=source[key];
+diff --git a/share/plugins/HarmonyAssistant/README.md b/share/plugins/HarmonyAssistant/README.md
+index d6741c2fb..1b6ccb061 100644
+--- a/share/plugins/HarmonyAssistant/README.md
++++ b/share/plugins/HarmonyAssistant/README.md
+@@ -1,15 +1,27 @@
+-# 和声助手 1.2.0
++# 和声助手 1.3.0
+ 
+-MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本 `0.4.0` 使用；音乐规则与界面仍在插件，主程序只提供通用数值快照、屏幕预览、停靠状态和文件读写接口。
++MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本 `0.5.0` 使用；音乐规则与界面仍在插件，主程序只提供通用数值快照、屏幕预览、停靠状态和文件读写接口。
+ 
+ ## 开始使用
+ 
+-本机新程序：`E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_harmony_1_2_x64\bin\MuseScore3Evo.exe`。
++本机新程序：`E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_harmony_1_3_x64\bin\MuseScore3Evo.exe`。
+ 
+-插件已放入新程序的 `plugins/HarmonyAssistant/`，并同步到你原先已启用的个人插件目录；旧文件逐个备份为 `.pre-1.2.0.bak`。启动新程序，在「插件 → 插件管理器」勾选 `HarmonyAssistant_MS3.qml`，然后运行「插件 → Harmony Assistant」。选择钢琴谱上的音符即可；普通空格播放自动跟随。请使用上面的新程序路径，旧程序和旧安装目录均保留。
++插件已放入新程序的 `plugins/HarmonyAssistant/`，并同步到你原先已启用的个人插件目录；旧文件逐个备份为 `.pre-1.3.0.bak`。启动新程序，在「插件 → 插件管理器」勾选 `HarmonyAssistant_MS3.qml`，然后运行「插件 → Harmony Assistant」。选择钢琴谱上的音符即可；普通空格播放自动跟随。请使用上面的新程序路径，旧程序和旧安装目录均保留。
+ 
+ 单独安装插件时，将本目录的运行文件一起复制：`HarmonyAssistant_MS3.qml`、`Harmony.js`、`Preferences.js`、`Analysis.js`、`ConfigurationEditor.qml`、`SettingsStore.qml`、`PanelCard.qml`、`UiLabel.qml`、`StableLabel.qml`、`ColorOption.qml`、`AppearanceEditor.qml`。标准 MuseScore 3 仍可使用原有选区分析与颜色恢复；新增全谱图层、踏板上下文及分析交换需要新主程序。只勾选主入口，不勾选组件或 tests 下的测试插件。
+ 
++## 1.3 记号优先级与双面板
++
++- 默认「优先保留原谱和弦 / 级数」：同一节拍、同一乐器已有普通或 Nashville 和弦时，隐藏重复的分析和弦；原谱 Roman 级数则隐藏重复级数。另一项仍可补充显示，面板始终保留完整分析。关闭此选项可同时显示。
++- 当前功能名避开已缓存的固定和弦框，并复用全谱标签的位置。原生文字编辑或拖动过程中，临时标签让出编辑对象附近区域，双击也交还原生编辑；结束编辑后恢复。选择/播放时固定记号保持原位，只更新高亮。
++- 和弦记号锚定实际和声变化的 tick；有节拍位置用该位置的 x，没有新音则在相邻节拍之间插值，换行后使用变化所在的系统。一个持续音可以对应多个独立变化记号，不互相覆盖。已有新音的小节起点仍保留重复提示。过密标注仍会省略，不挤占原谱。
++- 「记号背景遮罩」可关闭浅色底，保留文字高亮；遮罩开关不会取消避让原谱的规则。该选项自动保存，并随配置 JSON 导入/导出。
++- 顶部横条默认同时打开右侧详情。两处共用一个观察器、分析状态和配置，没有重复全谱扫描。可用「右侧详情」按钮显隐，或在设置切换「顶部摘要同时显示右侧详情」；右侧标题栏支持拖动和悬浮。「窗口」仍可打开独立详情工具窗口，「悬浮」调整摘要所在面板。双击记号优先聚焦已显示的右侧详情。
++- 右侧详情占用空间后，较窄的顶部横条集中显示和弦、级数和位置，摘要文字居中，左右/自定义位置仍可调整；宽度足够时保留功能音摘要，完整功能音始终可在右侧查看。
++- 拖回侧栏或放大为完整面板后，详情控件返回主面板；关闭右侧详情会保存关闭偏好。顶部位置、原有识别/配色/标注/交换和手动功能保留。旧主程序没有共享详情接口时使用原有详情窗口。
++
++这些新增原生能力需要个人主程序 0.5.0。硬件音频与长时间会话仍需实际使用验收；索引耗时不等于屏幕重绘或硬实时音频性能。
++
+ ## 1.2 显示与交互
+ 
+ - 顶部横条默认居中，可在右侧直接切换左 / 中 / 右；设置中的「横条位置」还支持 0–100% 自定义位置，并给右侧按钮留出空间。位置自动保存。横条的详细面板和悬浮功能保留。
+@@ -85,17 +97,20 @@ node HarmonyAssistant/tests/test-exchange.cjs
+ python HarmonyAssistant/tests/render_and_check.py
+ python HarmonyAssistant/tests/test_modern_panel.py
+ python HarmonyAssistant/tests/test_fixed_panel.py
++python HarmonyAssistant/tests/test_dual_panel.py
+ python HarmonyAssistant/tests/run_native_smoke.py <新程序exe> <独立测试目录>
+ ```
+ 
+ 前两项验证和弦逻辑、配置和分析交换；两项 Python 面板测试用 Qt 5 验证持续音、颜色恢复、撤销、模拟播放、隐藏恢复、全谱图层及 280/360/460 px 排版。最后一项用真实 Release 程序、独立设置和测试谱验证原生接口、Cmaj13、原色不变、配置与缓存。可加第三个参数指定安装目录里的主 QML，验证发布副本。
+ 
+-本次 Release 验证：`tst_scoreobserver` 13 项、既有 `tst_note` 11 项、真实 Widgets/QML 宿主 `tst_pluginhost` 3 项全部通过，无失败或跳过。实际宿主测试覆盖原崩溃的缩略谱重排路径、四次菜单打开、插件加载、顶部横条、悬浮双列、重新停靠与关闭重开；QML 原生窗口截图经过检查。颜色和文字的屏幕绘制差异、MSCX 保存字节一致、撤销失效和图层隔离均有回归检查。
++1.2 Release 验证：`tst_scoreobserver` 13 项、既有 `tst_note` 11 项、真实 Widgets/QML 宿主 `tst_pluginhost` 3 项全部通过，无失败或跳过。实际宿主测试覆盖原崩溃的缩略谱重排路径、四次菜单打开、插件加载、顶部横条、悬浮双列、重新停靠与关闭重开；QML 原生窗口截图经过检查。颜色和文字的屏幕绘制差异、MSCX 保存字节一致、撤销失效和图层隔离均有回归检查。
+ 
+-1000 小节/6000 音符本轮实测：首次索引 24.03 ms，1000 次原生缓存查询 1.68 ms，1000 次踏板/时序上下文查询 4.26 ms；6000 音符的数值分析帧 16.03 ms、全谱色层定位 16.12 ms。6000 音符 / 1000 固定标记的索引测试中，1000 次高亮切换共 0.716 ms，此数值不包含实际屏幕重绘；只查询每乐器的有序标记并更新旧/新包围框，不复制全谱颜色表。真实安装 QML 跨接口 1000 次查询约 8 ms，上下文约 19 ms。全谱音乐检测另由插件分批执行，这些数字不包含所有标注避让场景，也不是所有工程的上限。详细日志及边界见主程序个人更新日志。实际音频设备、长时间播放、声学残响和全部特殊谱法尚未作完整实机验收，不能承诺零开销或 DAW 硬实时保证。
++1.2 版本的 1000 小节/6000 音符实测：首次索引 24.03 ms，1000 次原生缓存查询 1.68 ms，1000 次踏板/时序上下文查询 4.26 ms；6000 音符的数值分析帧 16.03 ms、全谱色层定位 16.12 ms。6000 音符 / 1000 固定标记的索引测试中，1000 次高亮切换共 0.716 ms，此数值不包含实际屏幕重绘；只查询每乐器的有序标记并更新旧/新包围框，不复制全谱颜色表。真实安装 QML 跨接口 1000 次查询约 8 ms，上下文约 19 ms。全谱音乐检测另由插件分批执行，这些数字不包含所有标注避让场景，也不是所有工程的上限。详细日志及边界见主程序个人更新日志。实际音频设备、长时间播放、声学残响和全部特殊谱法尚未作完整实机验收，不能承诺零开销或 DAW 硬实时保证。
+ 
+ Windows 真实 GUI 测试需完整安装资源和 Qt 运行时，使用 `tests/run_native_gui.py <tst_pluginhost.exe> <安装根目录> <输出目录>`；其复制到独立运行时目录，设置一致的 Qt 模块/平台路径，采用临时应用设置及 45 秒超时。它关闭硬件音序器，不控制已有进程。截图 `ribbon.png`、`floating-panel.png` 来自 QML 原生窗口；Qt Widgets 的整窗 grab 不包含嵌入的原生 QML 内容。
+ 
+ 播放位置来自原程序 GUI 侧约 20 ms 心跳；插件最多合并等待 16 ms，再按有效音集合变化识别和绘色。普通选区合并 55 ms；持续音集合不变时不重复识别。首次/编辑后构建当前范围索引，随后每声部二分查询；隐藏原生面板停止计时和更新。
+ 
+-本轮真实安装宿主在同一隔离设置目录连续启动两次，验证仅级数、上下顺序、140% 字号、颜色、横条右对齐和功能名能自动恢复。Windows 部署补齐同 SDK 的 Qt5QmlModels.dll / Qt5QmlWorkerScript.dll；旧安装保留。
++1.2 真实安装宿主在同一隔离设置目录连续启动两次，验证仅级数、上下顺序、140% 字号、颜色、横条右对齐和功能名能自动恢复。Windows 部署补齐同 SDK 的 Qt5QmlModels.dll / Qt5QmlWorkerScript.dll；旧安装保留。
++
++1.3 Release 验证：tst_scoreobserver 14、tst_note 11、实际 tst_pluginhost 5 项通过，无失败/跳过；固定布局、配置/交换与双面板 Qt 测试通过。新增用例验证同一持续音两个变化的实际 x 坐标、原谱和弦/Roman 优先级、遮罩开关、移动标签与原生文字光标避让、双面板共用一个观察器和配置控件、关闭重开/悬浮返回。实际安装连续启动两次，新增三个开关与既有样式均恢复。日志及硬件/长会话限制见个人 CHANGELOG 0.5.0。
+-- 
+2.34.1.windows.1
+

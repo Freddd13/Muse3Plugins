@@ -1,0 +1,30 @@
+********* Start testing of TestPluginHost *********
+Config: Using QtTest library 5.15.2, Qt 5.15.2 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2019), windows 10
+QDEBUG : TestPluginHost::initTestCase() :/fonts/bravura//metadata.json is the metadata file for :/fonts/bravura//Bravura.otf
+QDEBUG : TestPluginHost::initTestCase() Found 0 private score font in "C:/Users/Fred/Documents/PluginHost/Score Fonts".
+QDEBUG : TestPluginHost::initTestCase() Found 0 system score font in "C:/Users/Fred/AppData/Local/SMuFL/Fonts".
+QDEBUG : TestPluginHost::initTestCase() Found 0 system score font in "C:/ProgramData/SMuFL/Fonts".
+QINFO  : TestPluginHost::initTestCase() ?????·À???ß≥?
+QDEBUG : TestPluginHost::initTestCase() ZoomBox::setLogicalZoom(): Formatting logical zoom level as 100% (rounded from 1.000000)
+QDEBUG : TestPluginHost::initTestCase() :/fonts/leland//metadata.json is the metadata file for :/fonts/leland//Leland.otf
+QINFO  : TestPluginHost::initTestCase() ????????ß≥?
+PASS   : TestPluginHost::initTestCase()
+QDEBUG : TestPluginHost::menuMetadataRelayoutAndDocking() Collect meta for <E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml>
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:833:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:833:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:833:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:833:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:826:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() QQuickView(0x220e730fee0) must be a top level window.
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:833:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:833:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+QWARN  : TestPluginHost::menuMetadataRelayoutAndDocking() file:///E:/programming/funcodes/muse3_dev/MuseScore/mtest/../share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml:826:5: QML Connections: Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(<arguments>) { ... }
+PASS   : TestPluginHost::menuMetadataRelayoutAndDocking()
+PASS   : TestPluginHost::changeTickWithoutNewOnset()
+QDEBUG : TestPluginHost::annotationPrioritiesWhileMoving() changeState NORMAL  -> EDIT
+QDEBUG : TestPluginHost::annotationPrioritiesWhileMoving() ScoreView::inputMethodQuery() updating cursorRect to: (233.000000, 76.000000) + (19.000000, 22.000000)
+QDEBUG : TestPluginHost::annotationPrioritiesWhileMoving() changeState EDIT  -> NORMAL
+PASS   : TestPluginHost::annotationPrioritiesWhileMoving()
+PASS   : TestPluginHost::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 4453ms
+********* Finished testing of TestPluginHost *********

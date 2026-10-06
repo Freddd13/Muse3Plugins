@@ -1,0 +1,19 @@
+{
+  "failures": [],
+  "api": true,
+  "chord": "Cmaj13",
+  "notes": 6,
+  "indexBuilds": 1,
+  "indexMilliseconds": 0.0403,
+  "persistedLabel": "third",
+  "persistedStyle": {
+    "content": 1,
+    "order": 3,
+    "scale": 140,
+    "color": "#224466",
+    "position": 2
+  },
+  "frames": 4,
+  "thousandSnapshotsMilliseconds": 8,
+  "thousandContextSnapshotsMilliseconds": 19
+}

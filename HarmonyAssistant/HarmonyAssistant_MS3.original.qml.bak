@@ -1,0 +1,844 @@
+import QtQuick 2.9
+import QtQuick.Controls 2.2
+import QtQuick.Layouts 1.3
+import MuseScore 3.0
+
+MuseScore {
+    id: root
+
+    menuPath: "Plugins.Harmony Assistant"
+    description: "Interactive harmony inspector for MuseScore 3: chord detection, Roman numeral, chord-tone coloring and piano keyboard display."
+    version: "0.1.0"
+    requiresScore: true
+    pluginType: "dock"
+    dockArea: "right"
+    implicitWidth: 410
+    implicitHeight: 680
+
+    // ---------- State ----------
+    property bool internalChange: false
+    property bool keyInitialized: false
+    property int currentTick: -1
+    property var currentNotes: []
+    property var currentPitches: []
+    property var currentPitchClasses: []
+    property int currentRootPc: -1
+    property int currentDefIndex: -1
+    property int keyboardStartMidi: 48
+    property var coloredNotes: []
+    property var originalColors: []
+
+    property string chordNameText: "—"
+    property string degreeText: "—"
+    property string compositionText: "—"
+    property string voicingText: "—"
+    property string inversionText: "—"
+    property string statusText: "请选择一个音符或和弦"
+
+    // Colors used both on the score and on the mini keyboard.
+    property string rootColor: "#E84A5F"
+    property string thirdColor: "#F5A623"
+    property string fifthColor: "#3E8ED0"
+    property string extensionColor: "#8E63CE"
+    property string nonChordColor: "#9AA0A6"
+
+    // Spelling choices. Duplicate pitch classes intentionally allow manual enharmonic spelling.
+    property var rootNames: [
+        "C", "C♯", "D♭", "D", "D♯", "E♭", "E", "F",
+        "F♯", "G♭", "G", "G♯", "A♭", "A", "A♯", "B♭", "B"
+    ]
+    property var rootPcs: [
+        0, 1, 1, 2, 3, 3, 4, 5,
+        6, 6, 7, 8, 8, 9, 10, 10, 11
+    ]
+
+    property var sharpNames: ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"]
+    property var flatNames:  ["C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"]
+
+    // Keep this ES5-compatible: MuseScore 3.6.2 ships with Qt 5.9.x on common builds.
+    property var chordDefs: [
+        { name: "大三和弦", suffix: "",       intervals: [0,4,7],       labels: ["1","3","5"],          minorLike: false, degreeSuffix: "" },
+        { name: "小三和弦", suffix: "m",      intervals: [0,3,7],       labels: ["1","♭3","5"],         minorLike: true,  degreeSuffix: "" },
+        { name: "属七",     suffix: "7",      intervals: [0,4,7,10],    labels: ["1","3","5","♭7"],   minorLike: false, degreeSuffix: "7" },
+        { name: "大七",     suffix: "maj7",   intervals: [0,4,7,11],    labels: ["1","3","5","7"],    minorLike: false, degreeSuffix: "maj7" },
+        { name: "小七",     suffix: "m7",     intervals: [0,3,7,10],    labels: ["1","♭3","5","♭7"],  minorLike: true,  degreeSuffix: "7" },
+        { name: "减三",     suffix: "dim",    intervals: [0,3,6],       labels: ["1","♭3","♭5"],        minorLike: true,  degreeSuffix: "°" },
+        { name: "减七",     suffix: "dim7",   intervals: [0,3,6,9],     labels: ["1","♭3","♭5","𝄫7"], minorLike: true,  degreeSuffix: "°7" },
+        { name: "半减七",   suffix: "m7♭5",   intervals: [0,3,6,10],    labels: ["1","♭3","♭5","♭7"], minorLike: true,  degreeSuffix: "ø7" },
+        { name: "增三",     suffix: "+",      intervals: [0,4,8],       labels: ["1","3","♯5"],         minorLike: false, degreeSuffix: "+" },
+        { name: "挂二",     suffix: "sus2",   intervals: [0,2,7],       labels: ["1","2","5"],          minorLike: false, degreeSuffix: "sus2" },
+        { name: "挂四",     suffix: "sus4",   intervals: [0,5,7],       labels: ["1","4","5"],          minorLike: false, degreeSuffix: "sus4" },
+        { name: "六和弦",   suffix: "6",      intervals: [0,4,7,9],     labels: ["1","3","5","6"],    minorLike: false, degreeSuffix: "6" },
+        { name: "小六",     suffix: "m6",     intervals: [0,3,7,9],     labels: ["1","♭3","5","6"],   minorLike: true,  degreeSuffix: "6" },
+        { name: "加九",     suffix: "add9",   intervals: [0,2,4,7],     labels: ["1","9","3","5"],    minorLike: false, degreeSuffix: "add9" },
+        { name: "小加九",   suffix: "m(add9)",intervals: [0,2,3,7],     labels: ["1","9","♭3","5"],   minorLike: true,  degreeSuffix: "add9" },
+        { name: "九和弦",   suffix: "9",      intervals: [0,2,4,7,10],  labels: ["1","9","3","5","♭7"], minorLike: false, degreeSuffix: "9" },
+        { name: "大九",     suffix: "maj9",   intervals: [0,2,4,7,11],  labels: ["1","9","3","5","7"],  minorLike: false, degreeSuffix: "maj9" },
+        { name: "小九",     suffix: "m9",     intervals: [0,2,3,7,10],  labels: ["1","9","♭3","5","♭7"], minorLike: true,  degreeSuffix: "9" },
+        { name: "五度",     suffix: "5",      intervals: [0,7],         labels: ["1","5"],               minorLike: false, degreeSuffix: "5" }
+    ]
+
+    property var qualityNames: [
+        "大三和弦", "小三和弦", "属七", "大七", "小七", "减三", "减七", "半减七", "增三",
+        "挂二", "挂四", "六和弦", "小六", "加九", "小加九", "九和弦", "大九", "小九", "五度"
+    ]
+
+    // ---------- Utility ----------
+    function mod12(n) {
+        var v = n % 12
+        return v < 0 ? v + 12 : v
+    }
+
+    function containsNumber(arr, value) {
+        for (var i = 0; i < arr.length; ++i)
+            if (arr[i] === value)
+                return true
+        return false
+    }
+
+    function uniquePitchClasses(pitches) {
+        var out = []
+        for (var i = 0; i < pitches.length; ++i) {
+            var pc = mod12(pitches[i])
+            if (!containsNumber(out, pc))
+                out.push(pc)
+        }
+        out.sort(function(a, b) { return a - b })
+        return out
+    }
+
+    function keyPrefersFlats() {
+        var n = rootNames[keyTonic.currentIndex]
+        if (n.indexOf("♭") >= 0)
+            return true
+        if (keyMode.currentIndex === 0) {
+            return n === "F"
+        }
+        return n === "D" || n === "G" || n === "C" || n === "F" || n === "B♭" || n === "E♭"
+    }
+
+    function pitchClassName(pc) {
+        return keyPrefersFlats() ? flatNames[mod12(pc)] : sharpNames[mod12(pc)]
+    }
+
+    function noteNameWithOctave(midi) {
+        var octave = Math.floor(midi / 12) - 1
+        return pitchClassName(midi) + octave
+    }
+
+    function rootIndexForPc(pc) {
+        var preferred = pitchClassName(pc)
+        for (var i = 0; i < rootNames.length; ++i)
+            if (rootNames[i] === preferred)
+                return i
+        for (var j = 0; j < rootPcs.length; ++j)
+            if (rootPcs[j] === mod12(pc))
+                return j
+        return 0
+    }
+
+    function qualityIntervalIndex(interval) {
+        if (currentDefIndex < 0)
+            return -1
+        var ints = chordDefs[currentDefIndex].intervals
+        for (var i = 0; i < ints.length; ++i)
+            if (ints[i] === interval)
+                return i
+        return -1
+    }
+
+    function roleColorForPitchClass(pc) {
+        if (currentRootPc < 0 || currentDefIndex < 0)
+            return nonChordColor
+        var interval = mod12(pc - currentRootPc)
+        var idx = qualityIntervalIndex(interval)
+        if (idx < 0)
+            return nonChordColor
+        if (interval === 0)
+            return rootColor
+        if (interval === 3 || interval === 4)
+            return thirdColor
+        if (interval === 6 || interval === 7 || interval === 8)
+            return fifthColor
+        return extensionColor
+    }
+
+    function isCurrentMidi(midi) {
+        for (var i = 0; i < currentPitches.length; ++i)
+            if (currentPitches[i] === midi)
+                return true
+        return false
+    }
+
+    function keyFill(midi, blackKey) {
+        if (isCurrentMidi(midi))
+            return roleColorForPitchClass(mod12(midi))
+        return blackKey ? "#252525" : "#FAFAFA"
+    }
+
+    function findSegment(element) {
+        var e = element
+        while (e && e.type !== Element.SEGMENT)
+            e = e.parent
+        return e
+    }
+
+    function selectedMusicalElement() {
+        if (!curScore || !curScore.selection)
+            return null
+        var els = curScore.selection.elements
+        for (var i = 0; i < els.length; ++i) {
+            if (els[i].type === Element.NOTE || els[i].type === Element.CHORD)
+                return els[i]
+        }
+        return null
+    }
+
+    function collectNotesAtSegment(seg) {
+        var notes = []
+        var pitches = []
+        if (!curScore || !seg)
+            return { notes: notes, pitches: pitches }
+
+        var totalTracks = curScore.nstaves * 4
+        for (var track = 0; track < totalTracks; ++track) {
+            var el = seg.elementAt(track)
+            if (el && el.type === Element.CHORD && el.notes) {
+                for (var n = 0; n < el.notes.length; ++n) {
+                    notes.push(el.notes[n])
+                    pitches.push(el.notes[n].pitch)
+                }
+            }
+        }
+        pitches.sort(function(a, b) { return a - b })
+        return { notes: notes, pitches: pitches }
+    }
+
+    // ---------- Harmony analysis ----------
+    function detectChord() {
+        if (currentPitchClasses.length < 2) {
+            currentRootPc = -1
+            currentDefIndex = -1
+            updateTexts()
+            return
+        }
+
+        var bassPc = currentPitches.length ? mod12(currentPitches[0]) : -1
+        var bestScore = 9999
+        var bestRoot = -1
+        var bestDef = -1
+
+        for (var rootPc = 0; rootPc < 12; ++rootPc) {
+            for (var d = 0; d < chordDefs.length; ++d) {
+                var def = chordDefs[d]
+                var missing = 0
+                var hit = 0
+                var extra = 0
+
+                for (var ii = 0; ii < def.intervals.length; ++ii) {
+                    var wanted = mod12(rootPc + def.intervals[ii])
+                    if (containsNumber(currentPitchClasses, wanted))
+                        ++hit
+                    else
+                        ++missing
+                }
+
+                for (var p = 0; p < currentPitchClasses.length; ++p) {
+                    var rel = mod12(currentPitchClasses[p] - rootPc)
+                    if (!containsNumber(def.intervals, rel))
+                        ++extra
+                }
+
+                var score = missing * 4.0 + extra * 1.15
+                if (!containsNumber(currentPitchClasses, rootPc))
+                    score += 5.0
+                if (rootPc === bassPc)
+                    score -= 0.35
+                if (missing === 0 && extra === 0)
+                    score -= def.intervals.length * 0.08
+                score -= hit * 0.01
+
+                if (score < bestScore) {
+                    bestScore = score
+                    bestRoot = rootPc
+                    bestDef = d
+                }
+            }
+        }
+
+        // Do not invent a rich chord from a weak dyad unless it is an exact power fifth.
+        if (currentPitchClasses.length === 2 && !(chordDefs[bestDef].suffix === "5" && bestScore < 0)) {
+            currentRootPc = -1
+            currentDefIndex = -1
+            chordNameText = "音数不足"
+            degreeText = "—"
+            compositionText = "—"
+            voicingText = buildVoicingText()
+            inversionText = "—"
+            statusText = "已读取当前位置；可手动指定和弦"
+            repaintCurrentNotes()
+            updateKeyboardRange()
+            return
+        }
+
+        currentRootPc = bestRoot
+        currentDefIndex = bestDef
+        rootCombo.currentIndex = rootIndexForPc(bestRoot)
+        qualityCombo.currentIndex = bestDef
+        updateTexts()
+        repaintCurrentNotes()
+        updateKeyboardRange()
+    }
+
+    function applyManualChord() {
+        if (rootCombo.currentIndex < 0 || qualityCombo.currentIndex < 0)
+            return
+        currentRootPc = rootPcs[rootCombo.currentIndex]
+        currentDefIndex = qualityCombo.currentIndex
+        updateTexts()
+        repaintCurrentNotes()
+        updateKeyboardRange()
+    }
+
+    function degreeBaseForDelta(delta) {
+        // Accidentals are chosen relative to the selected major/natural-minor scale.
+        var majorMap = ["I", "♭II", "II", "♭III", "III", "IV", "♯IV", "V", "♭VI", "VI", "♭VII", "VII"]
+        var minorMap = ["I", "♭II", "II", "III", "♯III", "IV", "♯IV", "V", "VI", "♯VI", "VII", "♯VII"]
+        return keyMode.currentIndex === 0 ? majorMap[delta] : minorMap[delta]
+    }
+
+    function romanDegree() {
+        if (currentRootPc < 0 || currentDefIndex < 0)
+            return "—"
+        var tonicPc = rootPcs[keyTonic.currentIndex]
+        var delta = mod12(currentRootPc - tonicPc)
+        var base = degreeBaseForDelta(delta)
+        var def = chordDefs[currentDefIndex]
+
+        if (def.minorLike)
+            base = base.toLowerCase()
+
+        return base + def.degreeSuffix
+    }
+
+    function buildCompositionText() {
+        if (currentRootPc < 0 || currentDefIndex < 0)
+            return "—"
+        var def = chordDefs[currentDefIndex]
+        var parts = []
+        for (var i = 0; i < def.intervals.length; ++i) {
+            var pc = mod12(currentRootPc + def.intervals[i])
+            parts.push(pitchClassName(pc) + "(" + def.labels[i] + ")")
+        }
+        return parts.join("  ")
+    }
+
+    function buildVoicingText() {
+        if (!currentPitches.length)
+            return "—"
+        var parts = []
+        for (var i = 0; i < currentPitches.length; ++i)
+            parts.push(noteNameWithOctave(currentPitches[i]))
+        return parts.join("  ")
+    }
+
+    function buildInversionText() {
+        if (!currentPitches.length || currentRootPc < 0 || currentDefIndex < 0)
+            return "—"
+        var bassPc = mod12(currentPitches[0])
+        var interval = mod12(bassPc - currentRootPc)
+        var def = chordDefs[currentDefIndex]
+        var idx = -1
+        for (var i = 0; i < def.intervals.length; ++i)
+            if (def.intervals[i] === interval)
+                idx = i
+
+        if (idx === 0)
+            return "原位 · Bass " + noteNameWithOctave(currentPitches[0])
+        if (idx === 1)
+            return "第一转位 · Bass " + noteNameWithOctave(currentPitches[0])
+        if (idx === 2)
+            return "第二转位 · Bass " + noteNameWithOctave(currentPitches[0])
+        if (idx === 3)
+            return "第三转位 · Bass " + noteNameWithOctave(currentPitches[0])
+        return "Bass " + noteNameWithOctave(currentPitches[0])
+    }
+
+    function updateTexts() {
+        if (currentRootPc < 0 || currentDefIndex < 0) {
+            chordNameText = "—"
+            degreeText = "—"
+            compositionText = "—"
+            voicingText = buildVoicingText()
+            inversionText = "—"
+            return
+        }
+        chordNameText = rootNames[rootCombo.currentIndex] + chordDefs[currentDefIndex].suffix
+        degreeText = romanDegree()
+        compositionText = buildCompositionText()
+        voicingText = buildVoicingText()
+        inversionText = buildInversionText()
+        statusText = autoChord.checked ? "自动识别" : "人工指定"
+    }
+
+    // ---------- Score coloring ----------
+    function restorePreviousColorsInsideCommand() {
+        for (var i = 0; i < coloredNotes.length; ++i) {
+            try {
+                coloredNotes[i].color = originalColors[i]
+            } catch (e) {
+                // A previously referenced note may have been deleted by the user.
+            }
+        }
+        coloredNotes = []
+        originalColors = []
+    }
+
+    function repaintCurrentNotes() {
+        if (!curScore)
+            return
+
+        internalChange = true
+        curScore.startCmd()
+        restorePreviousColorsInsideCommand()
+
+        if (scoreColoring.checked && currentDefIndex >= 0 && currentRootPc >= 0) {
+            var newColored = []
+            var newOriginal = []
+            for (var i = 0; i < currentNotes.length; ++i) {
+                var note = currentNotes[i]
+                newColored.push(note)
+                newOriginal.push(note.color)
+                note.color = roleColorForPitchClass(mod12(note.pitch))
+            }
+            coloredNotes = newColored
+            originalColors = newOriginal
+        }
+        curScore.endCmd()
+        internalChange = false
+    }
+
+    function restoreScoreColors() {
+        if (!curScore || coloredNotes.length === 0)
+            return
+        internalChange = true
+        curScore.startCmd()
+        restorePreviousColorsInsideCommand()
+        curScore.endCmd()
+        internalChange = false
+    }
+
+    // ---------- Selection / key ----------
+    function initializeKeyFromSignature(seg) {
+        if (keyInitialized || !curScore || !seg)
+            return
+
+        var c = curScore.newCursor()
+        c.track = 0
+        c.rewindToTick(seg.tick)
+        var ks = c.keySignature
+        if (ks === undefined || ks === null)
+            return
+
+        // Treat the key signature as its major-key tonic. Minor can be changed manually.
+        var majorTonicByKs = {
+            "-6": "G♭", "-5": "D♭", "-4": "A♭", "-3": "E♭", "-2": "B♭", "-1": "F",
+            "0": "C", "1": "G", "2": "D", "3": "A", "4": "E", "5": "B", "6": "F♯", "7": "C♯"
+        }
+        var target = majorTonicByKs[String(ks)]
+        if (target !== undefined) {
+            for (var i = 0; i < rootNames.length; ++i) {
+                if (rootNames[i] === target) {
+                    keyTonic.currentIndex = i
+                    keyMode.currentIndex = 0
+                    keyInitialized = true
+                    break
+                }
+            }
+        }
+    }
+
+    function refreshFromSelection() {
+        if (!curScore) {
+            statusText = "没有打开乐谱"
+            return
+        }
+
+        var el = selectedMusicalElement()
+        if (!el) {
+            statusText = "请选择一个音符或和弦"
+            return
+        }
+
+        var seg = findSegment(el)
+        if (!seg) {
+            statusText = "无法定位当前拍"
+            return
+        }
+
+        restoreScoreColors()
+        currentTick = seg.tick
+        initializeKeyFromSignature(seg)
+
+        var collected = collectNotesAtSegment(seg)
+        currentNotes = collected.notes
+        currentPitches = collected.pitches
+        currentPitchClasses = uniquePitchClasses(currentPitches)
+
+        if (!currentPitches.length) {
+            statusText = "当前位置没有可分析音符"
+            return
+        }
+
+        if (autoChord.checked)
+            detectChord()
+        else
+            applyManualChord()
+    }
+
+    function updateKeyboardRange() {
+        if (!currentPitches.length) {
+            keyboardStartMidi = 48
+            return
+        }
+        var low = currentPitches[0]
+        var high = currentPitches[currentPitches.length - 1]
+        var span = high - low
+        var start
+
+        if (span <= 35) {
+            var center = (low + high) / 2.0
+            start = Math.floor((center - 17) / 12) * 12
+        } else {
+            start = Math.floor(low / 12) * 12
+        }
+
+        if (start < 0)
+            start = 0
+        if (start > 84)
+            start = 84
+        keyboardStartMidi = start
+    }
+
+    function whiteMidiAt(index) {
+        var offsets = [0,2,4,5,7,9,11]
+        return keyboardStartMidi + Math.floor(index / 7) * 12 + offsets[index % 7]
+    }
+
+    function blackMidiAt(index) {
+        var offsets = [1,3,6,8,10]
+        return keyboardStartMidi + Math.floor(index / 5) * 12 + offsets[index % 5]
+    }
+
+    function blackX(index, whiteWidth) {
+        var beforeWhite = [0,1,3,4,5]
+        var oct = Math.floor(index / 5)
+        var k = index % 5
+        return (oct * 7 + beforeWhite[k] + 1) * whiteWidth - whiteWidth * 0.31
+    }
+
+    onRun: {
+        refreshFromSelection()
+    }
+
+    onScoreStateChanged: {
+        if (internalChange || state.undoRedo)
+            return
+        if (state.selectionChanged)
+            refreshFromSelection()
+    }
+
+    Component.onDestruction: {
+        restoreScoreColors()
+    }
+
+    // ---------- UI ----------
+    Rectangle {
+        anchors.fill: parent
+        color: "#F3F4F6"
+
+        Flickable {
+            id: flick
+            anchors.fill: parent
+            clip: true
+            contentWidth: width
+            contentHeight: panel.implicitHeight + 20
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { }
+
+            ColumnLayout {
+                id: panel
+                width: flick.width
+                spacing: 10
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.margins: 10
+                    Layout.bottomMargin: 0
+                    implicitHeight: 84
+                    radius: 6
+                    color: "white"
+                    border.color: "#D7DADF"
+
+                    GridLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        columns: 3
+                        columnSpacing: 8
+                        rowSpacing: 6
+
+                        Label { text: "调性"; font.bold: true }
+                        ComboBox {
+                            id: keyTonic
+                            Layout.fillWidth: true
+                            model: root.rootNames
+                            currentIndex: 0
+                            onActivated: {
+                                keyInitialized = true
+                                updateTexts()
+                            }
+                        }
+                        ComboBox {
+                            id: keyMode
+                            Layout.preferredWidth: 92
+                            model: ["大调", "小调"]
+                            currentIndex: 0
+                            onActivated: {
+                                keyInitialized = true
+                                updateTexts()
+                            }
+                        }
+
+                        Label { text: "识别"; font.bold: true }
+                        Switch {
+                            id: autoChord
+                            text: checked ? "自动" : "人工"
+                            checked: true
+                            onToggled: {
+                                if (checked)
+                                    detectChord()
+                                else
+                                    applyManualChord()
+                            }
+                        }
+                        Button {
+                            text: "刷新"
+                            onClicked: refreshFromSelection()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    implicitHeight: 112
+                    radius: 6
+                    color: "white"
+                    border.color: "#D7DADF"
+
+                    GridLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        columns: 2
+                        columnSpacing: 8
+                        rowSpacing: 6
+
+                        Label { text: "和弦根音"; font.bold: true }
+                        ComboBox {
+                            id: rootCombo
+                            Layout.fillWidth: true
+                            model: root.rootNames
+                            currentIndex: 0
+                            onActivated: {
+                                autoChord.checked = false
+                                applyManualChord()
+                            }
+                        }
+
+                        Label { text: "和弦类型"; font.bold: true }
+                        ComboBox {
+                            id: qualityCombo
+                            Layout.fillWidth: true
+                            model: root.qualityNames
+                            currentIndex: 0
+                            onActivated: {
+                                autoChord.checked = false
+                                applyManualChord()
+                            }
+                        }
+
+                        Label { text: "谱面着色"; font.bold: true }
+                        Switch {
+                            id: scoreColoring
+                            text: checked ? "开启" : "关闭"
+                            checked: true
+                            onToggled: repaintCurrentNotes()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    implicitHeight: 150
+                    radius: 6
+                    color: "white"
+                    border.color: "#D7DADF"
+
+                    GridLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        columns: 2
+                        columnSpacing: 12
+                        rowSpacing: 8
+
+                        Label { text: "当前和弦"; color: "#61666D" }
+                        Label { text: chordNameText; font.pixelSize: 24; font.bold: true; color: "#202124" }
+
+                        Label { text: "级数"; color: "#61666D" }
+                        Label { text: degreeText; font.pixelSize: 20; font.bold: true; color: "#202124" }
+
+                        Label { text: "组成"; color: "#61666D" }
+                        Label {
+                            text: compositionText
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: "#202124"
+                        }
+
+                        Label { text: "排列"; color: "#61666D" }
+                        Label {
+                            text: voicingText
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: "#202124"
+                        }
+
+                        Label { text: "转位"; color: "#61666D" }
+                        Label { text: inversionText; Layout.fillWidth: true; color: "#202124" }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    implicitHeight: 146
+                    radius: 6
+                    color: "white"
+                    border.color: "#D7DADF"
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 7
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text: "小钢琴 · 当前实际音高"; font.bold: true; Layout.fillWidth: true }
+                            Label {
+                                text: noteNameWithOctave(keyboardStartMidi) + " – " + noteNameWithOctave(keyboardStartMidi + 35)
+                                color: "#6E737A"
+                                font.pixelSize: 11
+                            }
+                        }
+
+                        Item {
+                            id: piano
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 88
+                            property real whiteW: width / 21.0
+
+                            Repeater {
+                                model: 21
+                                delegate: Rectangle {
+                                    property int midi: whiteMidiAt(index)
+                                    x: index * piano.whiteW
+                                    y: 0
+                                    width: piano.whiteW + 0.4
+                                    height: 88
+                                    color: keyFill(midi, false)
+                                    border.color: "#777"
+                                    border.width: 0.7
+
+                                    Label {
+                                        visible: isCurrentMidi(parent.midi)
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 3
+                                        text: noteNameWithOctave(parent.midi)
+                                        font.pixelSize: 8
+                                        color: "#222"
+                                    }
+                                }
+                            }
+
+                            Repeater {
+                                model: 15
+                                delegate: Rectangle {
+                                    property int midi: blackMidiAt(index)
+                                    x: blackX(index, piano.whiteW)
+                                    y: 0
+                                    width: piano.whiteW * 0.62
+                                    height: 55
+                                    color: keyFill(midi, true)
+                                    border.color: "#111"
+                                    border.width: 0.7
+                                    z: 2
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            spacing: 10
+                            Repeater {
+                                model: [
+                                    { t: "根", c: rootColor },
+                                    { t: "3", c: thirdColor },
+                                    { t: "5", c: fifthColor },
+                                    { t: "7/扩展", c: extensionColor },
+                                    { t: "非和弦", c: nonChordColor }
+                                ]
+                                delegate: RowLayout {
+                                    spacing: 3
+                                    Rectangle { width: 10; height: 10; radius: 2; color: modelData.c }
+                                    Label { text: modelData.t; font.pixelSize: 10; color: "#5F6368" }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    Layout.bottomMargin: 10
+                    implicitHeight: 54
+                    radius: 6
+                    color: "#E9ECEF"
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 9
+                        spacing: 8
+
+                        Label {
+                            text: statusText
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: "#555B61"
+                            font.pixelSize: 11
+                        }
+                        Button {
+                            text: "恢复颜色"
+                            onClicked: restoreScoreColors()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

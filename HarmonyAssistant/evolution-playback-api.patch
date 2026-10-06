@@ -1,0 +1,43 @@
+--- a/mscore/plugin/api/score.h
++++ b/mscore/plugin/api/score.h
+@@ -124,6 +124,10 @@
+        */
+       Q_PROPERTY(QString path READ path)
+ 
++      // Optional read-only bridge for harmony inspectors. Values are polled from the GUI thread.
++      Q_PROPERTY(int harmonyPlaybackTick READ harmonyPlaybackTick)
++      Q_PROPERTY(bool harmonyPlaybackActive READ harmonyPlaybackActive)
++
+ 
+    public:
+       /// \cond MS_INTERNAL
+@@ -146,6 +150,9 @@
+       MStyle* style() { return wrap(&score()->style(), score()); }
+       QString path() { return score()->importedFilePath(); }
+ 
++      int harmonyPlaybackTick() const { return score()->masterScore()->playPos().ticks(); }
++      bool harmonyPlaybackActive() const;
++
+       int pageNumberOffset() const { return score()->pageNumberOffset(); }
+       void setPageNumberOffset(int offset) { score()->undoChangePageNumberOffset(offset); }
+ 
+--- a/mscore/plugin/api/score.cpp
++++ b/mscore/plugin/api/score.cpp
+@@ -20,10 +20,17 @@
+ #include "libmscore/text.h"
+ 
+ #include "musescore.h"
++#include "mscore/seq.h"
+ #include "../qmlpluginengine.h"
+ 
+ namespace Ms {
+ namespace PluginAPI {
++
++bool Score::harmonyPlaybackActive() const
++      {
++      return seq && seq->isPlaying() && seq->score() == score()->masterScore();
++      }
++
+ 
+ //---------------------------------------------------------
+ //   Score::newCursor

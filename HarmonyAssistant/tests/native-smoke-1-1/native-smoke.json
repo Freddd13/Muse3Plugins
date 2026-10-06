@@ -1,0 +1,11 @@
+{
+  "failures": [],
+  "api": true,
+  "chord": "Cmaj13",
+  "notes": 6,
+  "indexBuilds": 1,
+  "indexMilliseconds": 0.0413,
+  "frames": 4,
+  "thousandSnapshotsMilliseconds": 10,
+  "thousandContextSnapshotsMilliseconds": 19
+}

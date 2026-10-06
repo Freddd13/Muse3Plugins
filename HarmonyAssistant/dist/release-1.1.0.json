@@ -1,0 +1,19 @@
+{
+  "pluginVersion": "1.1.0",
+  "personalVersion": "0.3.0",
+  "commit": "a818d9a7009306a721363b17a2aab4ee3178ab09",
+  "parent": "b878200db892d62c0481f9d06ae58753cfc6738b",
+  "files": {
+    "HarmonyAssistant_MS3.qml": "c1f16209758b0ec461ea82d519ec6a8fa220df1fb094f7d4c0e0cd5719dfc03a",
+    "Harmony.js": "9f8f9c627983f010fe569a91dad5c4a1d4016a122dd653f1d957dbdb450aeaf8",
+    "Preferences.js": "d8fd6a25759bcd5b26fc82be51a6bed42ac03b6457d9899ff396cc8989b575f4",
+    "Analysis.js": "1b53a1ed0dd0b779dd6a2d7bef3141bbda1496ccb0ad2f08ad7a84c49511f967",
+    "ConfigurationEditor.qml": "135e66e4d3966839140504eada7b257714265097c7675cd8262b039727dc0169",
+    "SettingsStore.qml": "b934653f7e94fdbb960fd433ddce1024b5d0012cce00d645675cfe0e96ddefd5",
+    "PanelCard.qml": "0ec8605309a1c29dd2fe0052e0364ab78f35970cbf5a3de8424528096758e82c",
+    "UiLabel.qml": "218fe7ceb983bfa4c98bb4fe37cd253765d4b283b41fa39d3bf923cbc91f66c7",
+    "README.md": "024f667cf94a8bb88fe2a74b63fb20dff13de4d06bdb7e5e8c9fe5df3d547999"
+  },
+  "HarmonyAssistant-1.1.0.zip": "a9d77919d3f631e3bed1bf47c1f0c04251492376139dff7f5f121a67a4d1648b",
+  "MuseScore3Evo.exe": "21ed4d77bfecd3c7a6d752821c12a68126ecba07d12c31254dff128c928fd430"
+}
