@@ -22,11 +22,11 @@ script=script.replace('        result.modern={baseCount:fixtureObserver.basePrev
         var originalRecords=analysisRecords
         var releases=JSON.parse(JSON.stringify(analysisRecords))
         var release=JSON.parse(JSON.stringify(releases[0]));release.tick=240;release.chord="Cm";release.degree="i";release.definition=1
-        releases.splice(1,0,release);analysisRecords=releases;applyScorePreview()
+        releases.splice(1,0,release);releases.forEach(function(f){f.imported=true});analysisRecords=releases;automaticRegions=Timeline.build(analysisRecords,collectPreferences(),firstTrack,[]);rebuildRegions();applyScorePreview()
         var releaseMarker=fixtureObserver.basePreview.filter(function(n){return n.chordTick===240})
         check(releaseMarker.length===1 && releaseMarker[0].tick===0,"release-only harmonic change anchors to its own tick")
         check(fixtureObserver.basePreview.filter(function(n){return n.tick===0 && n.chordTick!==undefined}).length===2,"one sustained source can own multiple markers")
-        analysisRecords=originalRecords;applyScorePreview()
+        analysisRecords=originalRecords;automaticRegions=Timeline.build(analysisRecords,collectPreferences(),firstTrack,[]);rebuildRegions();applyScorePreview()
         configuration.chordContent=0;applyScorePreview()
         check(fixtureObserver.basePreview.filter(function(n){return n.chord}).length===2,"chord-only markers")
         check(!fixtureObserver.basePreview.some(function(n){return n.degree}),"degree text hidden")

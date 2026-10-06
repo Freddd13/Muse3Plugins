@@ -1,0 +1,7 @@
+{
+  "mscore/notepreview.h": "6e0f2c815f720c7a20c9c331256d8a21234094242a11af41e1241cd1badf3505",
+  "mscore/scoreview.cpp": "85d864a85b5d57ab0cb01ded8fce1f6dd596932d0823b2eaaacb632c610052cd",
+  "mscore/events.cpp": "89cee4231b7cbcee50b9f56adefd780c81ee09710ae3ca25f2a07a29444f018f",
+  "mscore/plugin/api/scoreobserver.h": "8309f63c953105ee93964fb6b8156b435c21e1674a8e610f10f46ad191b9d1e2",
+  "mscore/plugin/api/scoreobserver.cpp": "ffccea238d87e0173e65d791b0204847e6a70820f4a8ff83922f2d86eff049de"
+}

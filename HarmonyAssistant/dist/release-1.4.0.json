@@ -1,0 +1,34 @@
+{
+  "pluginVersion": "1.4.0",
+  "personalVersion": "0.8.0",
+  "commit": "77cced440634309690e44962d8b76df4f981d75a",
+  "parent": "abf9e3453621e4c09398472154f58ba10d9e4958",
+  "files": {
+    "Analysis.js": "10c90fdb9365e4b61b6c33810f832490b89fa365c4a74edb6a58490f41bda788",
+    "AppearanceEditor.qml": "123db6211a6a46dada72dc84290cdb9ca94b8b1276300c6404ee60d2da15afbd",
+    "ColorOption.qml": "eecc055a37f9602234a647e4ab06143640281731046bd7be69e38627dbce9c6c",
+    "ConfigurationEditor.qml": "903ad67036afd3e6646da7dfba0102f4d49fd49b1a2e3411b2236fadfb9066e9",
+    "Harmony.js": "d830361a9e0d6d06585bed9fd6994e8362536f5936678e01f7f9fca938d9b666",
+    "HarmonyAssistant_MS3.qml": "02477a9df256f365f47445899fccf703c5ba092e76b60ac790d38398f1791ee1",
+    "PanelCard.qml": "8328592770e187b83063094dabcb426064849ec7de31a76949c4fd7cee0ebaa4",
+    "Preferences.js": "c505968613f33f55664cca1803f61de56a321d6583e80c716425b49dbff0b1b8",
+    "RangeEditor.qml": "42cc1eeee749c41aaeb8c010e3d02fd3bac2051a44df3461f77d1d96c0f523b3",
+    "README.md": "a94a7123938cfcbe07926cfe171985b1202f57058f36069f322c59b9fedea027",
+    "SettingsStore.qml": "b934653f7e94fdbb960fd433ddce1024b5d0012cce00d645675cfe0e96ddefd5",
+    "StableLabel.qml": "e35069e54f311d9ae6bbb6903e1bfedd9601f50312f455790854d8916ae76a4b",
+    "Timeline.js": "d1480ad1aa545a9e7d397ccad6c660ced564dd233e1eeee728adf6160daa25fe",
+    "UiLabel.qml": "218fe7ceb983bfa4c98bb4fe37cd253765d4b283b41fa39d3bf923cbc91f66c7"
+  },
+  "HarmonyAssistant-1.4.0.zip": "dcd18d6c9575da40f1fff60700a75b8967cebdcc9bb035f1a4448dc5a7e80548",
+  "MuseScore3Evo.exe": "e8483f9af9e49bb93063882d8938c19ff1c3b4d03a2e28bd1f33a3e3b99460f7",
+  "executable": "E:\\programming\\funcodes\\muse3_dev\\MuseScore\\msvc.install_harmony_1_4_x64\\bin\\MuseScore3Evo.exe",
+  "tests": {
+    "scoreobserver": 16,
+    "pluginhost": 10,
+    "note": 11,
+    "failed": 0,
+    "skipped": 0,
+    "restartPersistence": true,
+    "rangePointerDrag": true
+  }
+}

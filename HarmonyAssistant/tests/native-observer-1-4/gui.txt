@@ -1,0 +1,33 @@
+********* Start testing of TestScoreObserver *********
+Config: Using QtTest library 5.15.2, Qt 5.15.2 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2019), windows 10
+QDEBUG : TestScoreObserver::initTestCase() Ms::ScoreFont::load: :/fonts/bravura//metadata.json is the metadata file for :/fonts/bravura//Bravura.otf
+QDEBUG : TestScoreObserver::initTestCase() Ms::ScoreFont::scanUserFonts: Found 0 private score font in "C:/Users/Fred/Documents/tst_scoreobserver/Score Fonts".
+QDEBUG : TestScoreObserver::initTestCase() Ms::ScoreFont::scanUserFonts: Found 0 system score font in "C:/Users/Fred/AppData/Local/SMuFL/Fonts".
+QDEBUG : TestScoreObserver::initTestCase() Ms::ScoreFont::scanUserFonts: Found 0 system score font in "C:/ProgramData/SMuFL/Fonts".
+QDEBUG : TestScoreObserver::initTestCase() Ms::ScoreFont::load: :/fonts/leland//metadata.json is the metadata file for :/fonts/leland//Leland.otf
+PASS   : TestScoreObserver::initTestCase()
+PASS   : TestScoreObserver::sustainedNotesAndScope()
+PASS   : TestScoreObserver::pedalReleaseAndAnalysisFrames()
+PASS   : TestScoreObserver::arpeggioWindowAndRest()
+QWARN  : TestScoreObserver::atomicConfigurationRoundTrip() unknown: Empty filename passed to function
+PASS   : TestScoreObserver::atomicConfigurationRoundTrip()
+PASS   : TestScoreObserver::previewDoesNotChangeScoreOrExport()
+PASS   : TestScoreObserver::undoInvalidatesNumericIndex()
+PASS   : TestScoreObserver::layerIsolationAndRemoval()
+PASS   : TestScoreObserver::fixedMarkerHighlightAndStyle()
+PASS   : TestScoreObserver::multipleChangesOnOneSustainedNote()
+QINFO  : TestScoreObserver::fixedMarkerHighlightPerformance() TestScoreObserver::fixedMarkerHighlightPerformance: 6000 notes / 1000 fixed markers: 1000 indexed highlight changes 0.703 ms
+PASS   : TestScoreObserver::fixedMarkerHighlightPerformance()
+QINFO  : TestScoreObserver::longScorePerformance() TestScoreObserver::longScorePerformance: 1000 bars / 6000 notes: index 26.468 ms; 1000 cached snapshots 1.948 ms
+QINFO  : TestScoreObserver::longScorePerformance() TestScoreObserver::longScorePerformance: 1000 cached context snapshots 6.464 ms
+QINFO  : TestScoreObserver::longScorePerformance() TestScoreObserver::longScorePerformance: 6000-note numeric analysis frames 24.044 ms
+QINFO  : TestScoreObserver::longScorePerformance() TestScoreObserver::longScorePerformance: 6000-note base color geometry 21.655 ms
+PASS   : TestScoreObserver::longScorePerformance()
+PASS   : TestScoreObserver::cachedSnapshotBenchmark()
+RESULT : TestScoreObserver::cachedSnapshotBenchmark():
+     0.0010 msecs per iteration (total: 71, iterations: 65536)
+PASS   : TestScoreObserver::tiedAttackAcrossBar()
+PASS   : TestScoreObserver::boundedPedalMetadataAndNativeRenderingIsolation()
+PASS   : TestScoreObserver::cleanupTestCase()
+Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 1471ms
+********* Finished testing of TestScoreObserver *********

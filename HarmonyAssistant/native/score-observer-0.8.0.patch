@@ -1,0 +1,1736 @@
+From 77cced440634309690e44962d8b76df4f981d75a Mon Sep 17 00:00:00 2001
+From: Freddd13 <50367552+Freddd13@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 21:17:18 +0800
+Subject: [PATCH] feat(harmony): add editable harmonic regions and native
+ symbol previews
+
+---
+ mscore/events.cpp                             |   4 +
+ mscore/notepreview.h                          |   8 +-
+ mscore/plugin/api/scoreobserver.cpp           | 124 ++++++--
+ mscore/plugin/api/scoreobserver.h             |   2 +
+ mscore/scoreview.cpp                          |  20 +-
+ mtest/mscore/pluginhost/tst_pluginhost.cpp    |  86 +++++-
+ mtest/mscore/scoreobserver/smoke.qml          |  12 +-
+ .../scoreobserver/tst_scoreobserver.cpp       |  46 +++
+ personal/CHANGELOG.md                         |  14 +
+ personal/VERSION                              |   2 +-
+ personal/docs/04-feature-map.md               |   3 +
+ personal/docs/10-score-observer.md            |  11 +
+ personal/docs/README.md                       |   2 +-
+ personal/docs/source-map.tsv                  |  26 +-
+ share/plugins/HarmonyAssistant/Analysis.js    |  18 +-
+ .../HarmonyAssistant/AppearanceEditor.qml     |  13 +
+ share/plugins/HarmonyAssistant/Harmony.js     |  35 +++
+ .../HarmonyAssistant/HarmonyAssistant_MS3.qml | 271 ++++++++++++++----
+ share/plugins/HarmonyAssistant/Preferences.js |   8 +-
+ share/plugins/HarmonyAssistant/README.md      |  41 ++-
+ .../plugins/HarmonyAssistant/RangeEditor.qml  |  76 +++++
+ share/plugins/HarmonyAssistant/Timeline.js    | 192 +++++++++++++
+ 22 files changed, 887 insertions(+), 127 deletions(-)
+ create mode 100644 share/plugins/HarmonyAssistant/RangeEditor.qml
+ create mode 100644 share/plugins/HarmonyAssistant/Timeline.js
+
+diff --git a/mscore/events.cpp b/mscore/events.cpp
+index 712a181da..ad3ffa0ac 100644
+--- a/mscore/events.cpp
++++ b/mscore/events.cpp
+@@ -487,6 +487,10 @@ void ScoreView::mousePressEventNormal(QMouseEvent* ev)
+ 
+ void ScoreView::mousePressEvent(QMouseEvent* ev)
+       {
++      if (ev->button()==Qt::LeftButton && ev->modifiers()==Qt::NoModifier && !fotoMode()
++            && state==ViewState::NORMAL && activateNotePreview(toLogical(ev->pos()))) {
++            ev->accept();return;
++            }
+ 
+       if (tripleClickPending) {
+             if (textEditMode()) {
+diff --git a/mscore/notepreview.h b/mscore/notepreview.h
+index 3a51c7e59..99bf94744 100644
+--- a/mscore/notepreview.h
++++ b/mscore/notepreview.h
+@@ -6,6 +6,7 @@
+ #include <QHash>
+ #include <QFont>
+ #include <QFontMetricsF>
++#include <QPicture>
+ #include <QMap>
+ #include <QPointer>
+ #include <QRectF>
+@@ -27,6 +28,10 @@ struct NotePreviewEntry {
+       QPointF anchor;
+       qreal spatium = 0;
+       QString degree;
++      QPicture chordPicture {-1};
++      QPicture activeChordPicture {-1};
++      QSizeF renderedChordSize;
++      QString renderedChordKey;
+       QFont chordFont;
+       QFont degreeFont;
+       QRectF primaryBox;
+@@ -45,6 +50,7 @@ struct NotePreviewEntry {
+             return color == other.color && bounds == other.bounds && label == other.label && chord == other.chord
+                   && labelBox == other.labelBox && chordBox == other.chordBox && active == other.active
+                   && anchor == other.anchor && spatium == other.spatium && degree == other.degree
++                  && renderedChordKey == other.renderedChordKey && renderedChordSize == other.renderedChordSize
+                   && chordFont == other.chordFont && degreeFont == other.degreeFont
+                   && primaryBox == other.primaryBox && secondaryBox == other.secondaryBox
+                   && chordColor == other.chordColor && highlightColor == other.highlightColor
+@@ -74,7 +80,7 @@ inline QSizeF layoutPreviewChord(NotePreviewEntry& entry, int order)
+             QFontMetricsF metrics(font);
+             return QSizeF(metrics.horizontalAdvance(text), metrics.height());
+             };
+-      const auto a = size(entry.chord, entry.chordFont), b = size(entry.degree, entry.degreeFont);
++      const auto a = entry.renderedChordSize.isEmpty() ? size(entry.chord, entry.chordFont) : entry.renderedChordSize, b = size(entry.degree, entry.degreeFont);
+       if (a.isEmpty() || b.isEmpty()) {
+             const auto single = a.isEmpty() ? b : a;
+             (a.isEmpty() ? entry.secondaryBox : entry.primaryBox) = QRectF(QPointF(padding,padding),single);
+diff --git a/mscore/plugin/api/scoreobserver.cpp b/mscore/plugin/api/scoreobserver.cpp
+index e3b832a5a..56776b518 100644
+--- a/mscore/plugin/api/scoreobserver.cpp
++++ b/mscore/plugin/api/scoreobserver.cpp
+@@ -31,6 +31,9 @@
+ #include <QCryptographicHash>
+ #include <QDir>
+ #include <QFontMetricsF>
++#include <QFontInfo>
++#include <QPainter>
++#include <memory>
+ #include <QJsonDocument>
+ #include <QSaveFile>
+ #include <QStandardPaths>
+@@ -141,6 +144,12 @@ QVariantMap ScoreObserver::describe(const Ms::Note* note, int pitch, bool eventP
+             {"index", int(position - notes.begin())}, {"pitch", pitch},
+             {"writtenPitch", note->pitch()}, {"writtenTpc", note->tpc()}
+             };
++      auto attack=note;
++      QSet<const Ms::Note*> visited;
++      while (attack->tieBack() && attack->tieBack()->startNote() && !visited.contains(attack)) {
++            visited.insert(attack);attack=attack->tieBack()->startNote();
++            }
++      result.insert("attackTick",attack->chord()->tick().ticks());
+       if (!eventPitch) result.insert("tpc", note->tpc1());
+       return result;
+       }
+@@ -198,6 +207,16 @@ void ScoreObserver::ensureIndex(int firstTrack, int endTrack)
+             _frameTicks.append(window.start); _frameTicks.append(window.end);
+             hash.addData(QByteArray::number(window.start) + ":pedal:" + QByteArray::number(window.end) + ";");
+             }
++      std::sort(_pedals.begin(),_pedals.end(),[](const auto& a,const auto& b) {
++            return a.firstTrack<b.firstTrack || (a.firstTrack==b.firstTrack && a.start<b.start);
++            });
++      QVector<PedalWindow> continuous;
++      for (const auto& window:_pedals) {
++            if (!continuous.isEmpty() && continuous.back().firstTrack==window.firstTrack && window.start<continuous.back().end)
++                  continuous.back().end=qMax(continuous.back().end,window.end);
++            else continuous.append(window);
++            }
++      _pedals=continuous;
+       for (auto measure = _score->firstMeasure(); measure; measure = measure->nextMeasure()) {
+             _frameTicks.append(measure->tick().ticks());
+             _measureStarts.append(measure->tick().ticks());
+@@ -261,6 +280,18 @@ QVariantMap ScoreObserver::snapshot(int tick, int firstTrack, int endTrack, bool
+       return result;
+       }
+ 
++const ScoreObserver::PedalWindow* ScoreObserver::pedalWindow(int tick,int track) const
++      {
++      const int part=_score->staff(track/VOICES)->part()->startTrack();
++      const auto after=std::upper_bound(_pedals.cbegin(),_pedals.cend(),std::make_pair(part,tick),
++            [](const auto& key,const auto& window) {
++                  return key.first<window.firstTrack || (key.first==window.firstTrack && key.second<window.start);
++                  });
++      if (after==_pedals.cbegin())return nullptr;
++      const auto& window=*(after-1);
++      return window.firstTrack==part && tick<window.end ? &window : nullptr;
++      }
++
+ QVariantList ScoreObserver::contextNotes(int tick, int firstTrack, int endTrack, bool pedal, int windowTicks)
+       {
+       ensureIndex(firstTrack, endTrack);
+@@ -271,11 +302,10 @@ QVariantList ScoreObserver::contextNotes(int tick, int firstTrack, int endTrack,
+             const auto& voice = _index[track - firstTrack];
+             int start = qMax(barStart, tick - qBound(0, windowTicks, 1920));
+             bool heldByPedal = false;
+-            if (pedal) for (const auto& window : _pedals)
+-                  if (track >= window.firstTrack && track < window.endTrack && window.start <= tick && tick < window.end) {
+-                        // Include a note already held when the pedal goes down.
+-                        start = qMin(start, window.start); heldByPedal = true;
+-                        }
++            if (pedal) if (const auto window=pedalWindow(tick,track)) {
++                  // Include a note already held when the pedal goes down.
++                  start=qMin(start,window->start);heldByPedal=true;
++                  }
+             auto next = std::upper_bound(voice.cbegin(), voice.cend(), tick,
+                   [](int value, const Event& event) { return value < event.tick; });
+             while (next != voice.cbegin()) {
+@@ -310,6 +340,14 @@ QVariantMap ScoreObserver::contextSnapshot(int tick, int firstTrack, int endTrac
+             context = merged.values();
+             }
+       result.insert("analysisNotes", context);
++      QVariantList parts,windows;
++      for (const auto part:_score->parts()) if (part->startTrack()<endTrack && part->endTrack()>firstTrack)
++            parts.append(QVariantMap{{"startTrack",part->startTrack()},{"endTrack",part->endTrack()}});
++      for (const auto part:_score->parts()) if (part->startTrack()<endTrack && part->endTrack()>firstTrack)
++            if (const auto window=pedalWindow(tick,part->startTrack()))
++                  windows.append(QVariantMap{{"start",window->start},{"end",window->end},{"firstTrack",window->firstTrack},{"endTrack",window->endTrack}});
++      result.insert("parts",parts);result.insert("pedalWindows",windows);
++      result.insert("scoreEnd",_score->lastMeasure() ? _score->lastMeasure()->endTick().ticks() : 0);
+       result.insert("fingerprint", _fingerprint);
+       return result;
+       }
+@@ -383,6 +421,10 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+             }
+       QHash<const Page*,QVector<QRectF>> occupied,chordBoxes;
+       QHash<const System*,QMap<int,QVector<int>>> groups;
++      // Private style/chord list: parsing unknown symbols must not modify the user's score.
++      std::unique_ptr<Ms::MasterScore> scratch;
++      QHash<QString,NotePreviewEntry> rendered;
++      int hidden=0;QString fontFallback;
+       for (const auto& descriptor : descriptors) {
+             const auto value=descriptor.toMap();
+             auto note=resolve(value,descriptors.size()>64 ? &segments : nullptr);
+@@ -458,19 +500,50 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+             if (family.isEmpty()) family=_score->styleSt(Sid::chordSymbolAFontFace);
+             qreal scale=value.value("chordScale",1.0).toDouble();
+             if (!qIsFinite(scale) || scale<.6 || scale>2.) scale=1.;
+-            entry.chordFont=QFont(family);entry.chordFont.setPixelSize(qMax(5,qRound(sp*1.65*scale)));
+-            entry.chordFont.setLetterSpacing(QFont::AbsoluteSpacing,-sp*.02);
+-            entry.degreeFont=QFont("Arial");entry.degreeFont.setPixelSize(qMax(5,qRound(sp*1.45*scale)));
++            entry.chordFont=QFont(family);entry.chordFont.setPointSizeF(_score->styleD(Sid::chordSymbolAFontSize)*scale);
++            QString degreeFamily=value.value("degreeFont","Arial").toString().left(64);
++            entry.degreeFont=QFont(degreeFamily);entry.degreeFont.setPixelSize(qMax(5,qRound(sp*1.45*scale)));
++            const QFontInfo resolved(entry.chordFont);
++            if (resolved.family().compare(family,Qt::CaseInsensitive)!=0) fontFallback=resolved.family();
+             auto readColor=[&](const char* key,const QColor& fallback) {
+                   const QColor color(value.value(key).toString());return color.isValid() ? color : fallback;
+                   };
+             entry.chordColor=readColor("chordColor",entry.chordColor);
+             entry.highlightColor=readColor("highlightColor",entry.highlightColor);
+             entry.highlightBackground=readColor("highlightBackground",entry.highlightBackground);
++            if (!entry.chord.isEmpty()) {
++                  const QString renderKey=entry.chord+"\t"+family+"\t"+QString::number(scale,'g',12)+"\t"
++                        +entry.chordColor.name()+entry.highlightColor.name();
++                  if (!rendered.contains(renderKey)) {
++                        if (!scratch) {
++                              scratch=std::make_unique<Ms::MasterScore>(_score->style());
++                              // Scores without written Harmony may not yet have loaded their symbol list.
++                              scratch->style().checkChordList();
++                              }
++                        Harmony harmony(scratch.get());
++                        if (!value.value("chordFont").toString().isEmpty()) harmony.setProperty(Pid::FONT_FACE,family);
++                        harmony.setProperty(Pid::FONT_SIZE,_score->styleD(Sid::chordSymbolAFontSize)*scale);
++                        harmony.setHarmony(entry.chord);harmony.calculateBoundingRect();
++                        const auto nativeBox=harmony.bbox();
++                        NotePreviewEntry glyphs;glyphs.renderedChordSize=nativeBox.size();glyphs.renderedChordKey=renderKey;
++                        auto record=[&](const QColor& color,QPicture& picture) {
++                              harmony.setColor(color);QPainter painter(&picture);painter.translate(-nativeBox.topLeft());
++                              static_cast<const Element&>(harmony).draw(&painter);painter.end();
++                              };
++                        record(entry.chordColor,glyphs.chordPicture);record(entry.highlightColor,glyphs.activeChordPicture);
++                        // Include rendered bytes: score style/font/chord-list edits must invalidate equal-sized glyphs.
++                        glyphs.renderedChordKey += QCryptographicHash::hash(
++                              QByteArray(glyphs.chordPicture.data(),glyphs.chordPicture.size()),QCryptographicHash::Sha256).toHex();
++                        rendered.insert(renderKey,glyphs);
++                        }
++                  const auto& glyphs=rendered[renderKey];entry.chordPicture=glyphs.chordPicture;
++                  entry.activeChordPicture=glyphs.activeChordPicture;entry.renderedChordSize=glyphs.renderedChordSize;
++                  entry.renderedChordKey=glyphs.renderedChordKey;
++                  }
+             entry.chordBox=QRectF(QPointF(),layoutPreviewChord(entry,qBound(0,value.value("chordOrder").toInt(),3)));
+             groups[system][entry.annotationTrack].append(markers.size());markers.append(entry);positions.append(position);
+             }
+-      // One shared row per system/part. No horizontal nudging: x remains the harmonic change's tick.
++      // Prefer one row per system/part; lift colliding markers while keeping their tick x.
+       for (auto systemIt=groups.cbegin();systemIt!=groups.cend();++systemIt) {
+             const auto system=systemIt.key();const auto page=system->page();
+             for (auto groupIt=systemIt->cbegin();groupIt!=systemIt->cend();++groupIt) {
+@@ -479,36 +552,29 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+                   const qreal sp=markers[group.front()].spatium;
+                   qreal height=0;for (int index:group) height=qMax(height,markers[index].chordBox.height());
+                   const qreal top=system->staffYpage(groupIt.key()/VOICES)-sp*1.5-height;
+-                  QVector<QRectF> best;int bestCount=-1;
+-                  for (int lane=0;lane<4;++lane) {
+-                        QVector<QRectF> boxes;int count=0;
+-                        for (int index:group) {
+-                              const auto& entry=markers[index];
+-                              const QRectF candidate(positions[index].x(),top-lane*sp*1.3,entry.chordBox.width(),height);
++                  for (int index:group) {
++                        auto& entry=markers[index];QRectF placed;
++                        for (int lane=0;lane<6;++lane) {
++                              const QRectF candidate(positions[index].x(),top-lane*(height+sp*.5),entry.chordBox.width(),height);
+                               bool collision=!page->bbox().contains(candidate);
+-                              if (owner==this) for (const auto& box:_baseChordBoxes.value(page))
+-                                    if (box.adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)){collision=true;break;}
+-                              for (const auto& box:boxes) if (!box.isEmpty() && box.adjusted(-sp*.2,0,sp*.2,0).intersects(candidate)){collision=true;break;}
+-                              if (!collision) for (const auto& box:occupied[page])
+-                                    if (box.adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)){collision=true;break;}
++                              for (const auto& box:occupied[page])
++                                    if (box.adjusted(-sp*.15,-sp*.12,sp*.15,sp*.12).intersects(candidate)){collision=true;break;}
+                               if (!collision) for (const auto element:page->items(candidate)) {
+                                     if (!element->visible() || element->isStaffLines() || element->isPage() || element->isSystem() || element->isMeasure()) continue;
+                                     if (element->pageBoundingRect().adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)){collision=true;break;}
+                                     }
+-                              boxes.append(collision ? QRectF() : candidate);if (!collision)++count;
++                              if (!collision){placed=candidate;break;}
+                               }
+-                        if (count>bestCount){bestCount=count;best=boxes;}
+-                        if (count==group.size()) break;
+-                        }
+-                  for (int i=0;i<group.size();++i) {
+-                        auto& entry=markers[group[i]];
+-                        entry.chordBox=best[i].isEmpty() ? QRectF() : best[i].translated(-positions[group[i]]);
+-                        if (!best[i].isEmpty()){occupied[page].append(best[i]);chordBoxes[page].append(best[i]);}
++                        entry.chordBox=placed.isEmpty() ? QRectF() : placed.translated(-positions[index]);
++                        if (placed.isEmpty()) ++hidden;
++                        else {occupied[page].append(placed);chordBoxes[page].append(placed);}
+                         entry.bounds=entry.chordBox.isEmpty() ? QRectF() : entry.chordBox.translated(entry.anchor);
+                         }
++
+                   }
+             }
+-      if (owner==&_baseOwner){_baseColors=colors;_baseChordBoxes=chordBoxes;}
++      if (owner==&_baseOwner){_baseColors=colors;_baseChordBoxes=chordBoxes;
++            setProperty("previewStatus",QVariantMap{{"hidden",hidden},{"fontFallback",fontFallback}});}
+       for (auto viewer:_score->getViewer()) {
+             auto view=dynamic_cast<Ms::ScoreView*>(viewer);if (!view) continue;
+             view->setNotePreviewColors(owner,colors,markers);
+diff --git a/mscore/plugin/api/scoreobserver.h b/mscore/plugin/api/scoreobserver.h
+index 60e8a6f3d..06b2291cf 100644
+--- a/mscore/plugin/api/scoreobserver.h
++++ b/mscore/plugin/api/scoreobserver.h
+@@ -51,6 +51,7 @@ class ScoreObserver : public QObject {
+       void applyPreview(QObject* owner, const QVariantList& notes);
+       Ms::Note* resolve(const QVariantMap& value, const QHash<int, Ms::Segment*>* segments = nullptr) const;
+       void clearPreview(QObject* owner);
++      const PedalWindow* pedalWindow(int tick,int track) const;
+       QVariantList contextNotes(int tick, int firstTrack, int endTrack, bool pedal, int windowTicks);
+ 
+       QPointer<Ms::Score> _score;
+@@ -88,6 +89,7 @@ class ScoreObserver : public QObject {
+       Q_INVOKABLE void clearAllPreviews();
+       Q_INVOKABLE void setScorePreview(const QVariantList& notes);
+       Q_INVOKABLE void setActiveScorePreview(int tick);
++      Q_INVOKABLE QVariantMap previewStatus() const { return property("previewStatus").toMap(); }
+       Q_INVOKABLE void activatePreview(int tick, int track) { emit previewActivated(tick, track); }
+       Q_INVOKABLE QVariantMap contextSnapshot(int tick, int firstTrack, int endTrack, bool pedal, int windowTicks, bool sounding = false);
+       Q_INVOKABLE QVariantMap analysisFrames(int fromTick, int limit, int firstTrack, int endTrack, bool pedal, int windowTicks);
+diff --git a/mscore/scoreview.cpp b/mscore/scoreview.cpp
+index 95479f4b3..3d477435a 100644
+--- a/mscore/scoreview.cpp
++++ b/mscore/scoreview.cpp
+@@ -1253,17 +1253,9 @@ void ScoreView::drawElements(QPainter& painter, QList<Element*>& el, Element* ed
+             const QColor preview = previewEntry ? previewEntry->color : QColor();
+             if (preview.isValid()) {
+                   const auto note = toNote(e);
+-                  const bool editingSelection = note->selected() && !score()->isPlaying();
+-                  note->draw(&painter, editingSelection || !note->visible()
+-                        ? note->curColor() : preview);
+-                  // Retain a distinct native playback mark without hiding the role color.
+-                  if (note->mark()) {
+-                        painter.save();
+-                        painter.setPen(QPen(note->curColor(), score()->spatium() * 0.08));
+-                        const QRectF box = note->bbox();
+-                        painter.drawLine(box.bottomLeft(), box.bottomRight());
+-                        painter.restore();
+-                        }
++                  // Resolve every native state (playback, selection, drop, invisible) first.
++                  // Only the ordinary color is replaced; curColor remains the authority.
++                  note->draw(&painter, note->curColor(note->visible(),preview));
+                   }
+             else e->draw(&painter);
+             if (previewEntry && e->visible()) {
+@@ -1496,7 +1488,11 @@ void ScoreView::paint(const QRect& r, QPainter& p)
+                         p.drawRoundedRect(QRectF(QPointF(),box.size()),entry.spatium*.18,entry.spatium*.18);
+                         }
+                   p.setPen(active ? entry.highlightColor : entry.chordColor);
+-                  p.setFont(entry.chordFont);p.drawText(entry.primaryBox,Qt::AlignCenter,entry.chord);
++                  if (!entry.chordPicture.isNull()) {
++                        p.save();p.translate(entry.primaryBox.topLeft());
++                        p.drawPicture(QPointF(),active ? entry.activeChordPicture : entry.chordPicture);p.restore();
++                        }
++                  else {p.setFont(entry.chordFont);p.drawText(entry.primaryBox,Qt::AlignCenter,entry.chord);}
+                   p.setFont(entry.degreeFont);p.drawText(entry.secondaryBox,Qt::AlignCenter,entry.degree);
+                   p.restore();
+                   });
+diff --git a/mtest/mscore/pluginhost/tst_pluginhost.cpp b/mtest/mscore/pluginhost/tst_pluginhost.cpp
+index fd621827f..a05d22b54 100644
+--- a/mtest/mscore/pluginhost/tst_pluginhost.cpp
++++ b/mtest/mscore/pluginhost/tst_pluginhost.cpp
+@@ -19,12 +19,15 @@
+ #include "libmscore/chord.h"
+ #include "libmscore/harmony.h"
+ #include "libmscore/measure.h"
++#include "libmscore/system.h"
++#include "libmscore/page.h"
+ #include "libmscore/note.h"
+ #include "libmscore/segment.h"
+ #include "libmscore/inputrhythm.h"
+ #include "mscore/inputrhythmpreference.h"
+ #include "libmscore/undo.h"
+ #include "mscore/preferences.h"
++#include "mscore/pianotools.h"
+ #include "mscore/pianoroll/pianoview.h"
+ #include "mscore/workspace.h"
+ #include "mscore/shortcut.h"
+@@ -159,7 +162,7 @@ class TestPluginHost : public QObject {
+             for(auto window:QGuiApplication::allWindows()) {
+                   auto view=qobject_cast<QQuickView*>(window);
+                   auto root=view ? qobject_cast<QmlPlugin*>(view->rootObject()) : nullptr;
+-                  if(root && root->version()=="1.3.0") {panel=root;panelView=view;break;}
++                  if(root && root->version()=="1.4.0") {panel=root;panelView=view;break;}
+                   }
+             for(auto candidate:main->findChildren<QDockWidget*>())
+                   if(candidate->windowTitle()=="Harmony Assistant") {dock=candidate;break;}
+@@ -168,6 +171,8 @@ class TestPluginHost : public QObject {
+             auto observer=panel->findChild<PluginAPI::ScoreObserver*>();
+             QVERIFY(observer);
+             observer->setScore(&wrapped);
++            // Freeze the plugin's background analysis while testing the observer layer directly.
++            panel->setProperty("surfaceActive",false);observer->clearAllPreviews();
+             auto descriptors=observer->snapshot(480,0,8).value("notes").toList();
+             for(auto& descriptor:descriptors){auto value=descriptor.toMap();value["color"]="#005d5d";value["label"]="3";value["active"]=true;descriptor=value;}
+             const auto original=main->currentScoreView()->grab().toImage();
+@@ -379,6 +384,85 @@ class TestPluginHost : public QObject {
+             view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("native-editor-priority.png"));
+             view->changeState(ViewState::NORMAL);main->hide();
+             }
++
++      void nativeStateColorsAndRangeFrame()
++            {
++            auto main=Ms::mscore;
++            auto score=main->readScore(QString(TESTROOT)+"/mtest/mscore/scoreobserver/piano.mscx");
++            QVERIFY(score);main->setCurrentScoreView(main->appendScore(score));
++            main->resize(1100,800);main->show();QTest::qWait(30);
++            auto view=main->currentScoreView();PluginAPI::Score wrapped(score);
++            PluginAPI::ScoreObserver observer;observer.setScore(&wrapped);
++            auto descriptors=observer.snapshot(480,0,4).value("notes").toList();
++            auto segment=score->tick2segment(Fraction::fromTicks(480),false,SegmentType::ChordRest);
++            auto note=toChord(segment->element(0))->notes().front();
++            auto d=descriptors.front().toMap();d["color"]="#9f1853";
++            for(int state=0;state<3;++state) {
++                  note->setSelected(state==0);note->setMark(state==1);note->setDropTarget(state==2);
++                  observer.clearAllPreviews();view->update();QTest::qWait(10);
++                  const auto baseline=view->grab().toImage();
++                  observer.setNotePreviewColors({d});view->update();QTest::qWait(10);
++                  QCOMPARE(view->grab().toImage(),baseline);
++                  }
++            note->setSelected(false);note->setMark(false);note->setDropTarget(false);
++            observer.clearAllPreviews();view->update();QTest::qWait(10);
++            const auto original=view->grab().toImage();observer.setNotePreviewColors({d});
++            QVERIFY(view->grab().toImage()!=original);
++            observer.clearAllPreviews();view->update();QTest::qWait(10);
++            QCOMPARE(view->grab().toImage(),original);
++            // Native P keyboard state and palette are independent of the score preview.
++            HPiano keyboard;keyboard.resize(600,180);keyboard.show();QTest::qWait(10);
++            score->select(note);keyboard.changeSelection(score->selection());
++            for(int mode=0;mode<3;++mode) {
++                  keyboard.setPlaybackActive(mode==1);
++                  if(mode==1)keyboard.pressPlaybackPitch(note->pitch());
++                  if(mode==2)keyboard.pressPitch(note->pitch());
++                  observer.clearAllPreviews();const auto keys=keyboard.grab().toImage();
++                  observer.setNotePreviewColors({d});QCOMPARE(keyboard.grab().toImage(),keys);
++                  observer.clearAllPreviews();QCOMPARE(keyboard.grab().toImage(),keys);
++                  keyboard.releasePlaybackPitch(note->pitch());keyboard.releasePitch(note->pitch());
++                  }
++            keyboard.hide();
++            score->selection().setRange(segment,score->lastSegment(),0,1);score->selection().update();
++            observer.clearAllPreviews();view->update();QTest::qWait(10);
++            const auto selected=view->grab().toImage();observer.setNotePreviewColors({d});
++            QCOMPARE(view->grab().toImage(),selected);
++            view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("native-range-color.png"));
++            main->hide();
++            }
++      void denseMarkersKeepTickAndNativeFont()
++            {
++            auto main=Ms::mscore;
++            auto score=main->readScore(QString(TESTROOT)+"/mtest/mscore/scoreobserver/piano.mscx");
++            QVERIFY(score);main->setCurrentScoreView(main->appendScore(score));
++            main->resize(1100,800);main->show();QTest::qWait(30);
++            auto view=main->currentScoreView();PluginAPI::Score wrapped(score);
++            PluginAPI::ScoreObserver observer;observer.setScore(&wrapped);
++            auto first=observer.snapshot(0,4,8).value("notes").toList().front().toMap();
++            first["chord"]="Cmaj7(#11)/E";first["chordTick"]=0;first["chordUntil"]=60;
++            auto second=first;second["chord"]="G7(b9)/B";second["chordTick"]=60;second["chordUntil"]=480;
++            observer.setScorePreview({first,second});
++            QCOMPARE(observer.previewStatus().value("hidden").toInt(),0);
++            QSignalSpy activated(&observer,&PluginAPI::ScoreObserver::previewActivated);
++            const auto segment=score->firstSegment(SegmentType::ChordRest);
++            const auto next=score->tick2segment(Fraction::fromTicks(480),false,SegmentType::ChordRest);
++            const auto note=toChord(segment->element(4))->notes().front();
++            const qreal x0=segment->pagePos().x()+segment->measure()->system()->page()->pos().x();
++            const qreal x1=x0+(next->pagePos().x()-segment->pagePos().x())/8;
++            QMap<int,qreal> hitYs;
++            for(int dy=-qRound(note->spatium()*30);dy<0;dy+=1) {
++                  for(const auto anchor:QVector<QPair<int,qreal>>{{0,x0},{60,x1}}) {
++                        QPointF point(anchor.second+note->spatium()*.3,note->canvasPos().y()+dy);
++                        if(view->activateNotePreview(point) && activated.last().front().toInt()==anchor.first)hitYs.insert(anchor.first,point.y());
++                        }
++                  }
++            QCOMPARE(hitYs.size(),2);QVERIFY(qAbs(hitYs[0]-hitYs[60])>note->spatium());
++            observer.setActiveScorePreview(60);
++            view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("dense-native-font.png"));
++            const auto normal=view->grab().toImage();first["chordFont"]="Arial";second["chordFont"]="Arial";
++            observer.setScorePreview({first,second});QVERIFY(view->grab().toImage()!=normal);
++            main->hide();
++            }
+       };
+ QTEST_MAIN(TestPluginHost)
+ #include "tst_pluginhost.moc"
+diff --git a/mtest/mscore/scoreobserver/smoke.qml b/mtest/mscore/scoreobserver/smoke.qml
+index 94b57a99d..ea2411a70 100644
+--- a/mtest/mscore/scoreobserver/smoke.qml
++++ b/mtest/mscore/scoreobserver/smoke.qml
+@@ -4,7 +4,7 @@ import FileIO 3.0
+ 
+ MuseScore {
+     menuPath: "Plugins.Harmony native smoke"
+-    version: "1.3.0"
++    version: "1.4.0"
+     requiresScore: true
+     FileIO {id: report}
+     onRun: {
+@@ -52,6 +52,16 @@ MuseScore {
+             panel.applyPreferences(config)
+             panel.buildAnalysisChunk()
+             if(!panel.analysisRecords.length)result.failures.push("full score analysis missing")
++            while(panel.regionBuilder)panel.buildRegionChunk()
++            if(panel.analysisDirty)result.failures.push("harmonic regions incomplete")
++            if(!panel.automaticRegions.some(function(r){return r.start<=480 && r.end>480 && r.root===0 && r.definition===23}))result.failures.push("upper extensions changed the bass harmony")
++            result.persistedCorrection=panel.manualOverrides.length?panel.manualOverrides[0].chord:""
++            if(result.persistedLabel==="third" && result.persistedCorrection!=="Am/C")result.failures.push("manual correction not restored on restart")
++            panel.displayTick(480,true)
++            panel.editRange("assign",0,720,13,1,0)
++            if(panel.ownedRegion.chord!=="Am/C")result.failures.push("manual region assignment")
++            panel.openAnnotation(0,0)
++            if(panel.annotationTick!==0)result.failures.push("selected annotation tick")
+             panel.observer.setActiveScorePreview(600)
+             var preferences=panel.observer.loadConfiguration("NativeSmoke")
+             var saved={schema:1,label:"third",enabled:true}
+diff --git a/mtest/mscore/scoreobserver/tst_scoreobserver.cpp b/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
+index 6a0e88aa1..b4b7fe9a0 100644
+--- a/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
++++ b/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
+@@ -29,6 +29,10 @@
+ #include "libmscore/segment.h"
+ #include "libmscore/undo.h"
+ #include "libmscore/pedal.h"
++#include "libmscore/tie.h"
++#include "libmscore/measure.h"
++#include "libmscore/harmony.h"
++#include "libmscore/chordlist.h"
+ 
+ using namespace Ms;
+ class TestScoreObserver : public QObject, public MTest {
+@@ -312,6 +316,48 @@ class TestScoreObserver : public QObject, public MTest {
+             QBENCHMARK { observer.snapshot(480, 0, 8); }
+             QCOMPARE(observer.indexBuildCount(), 1);
+             }
++
++      void tiedAttackAcrossBar()
++            {
++            std::unique_ptr<MasterScore> score(readScore("libmscore/inputrhythm/blank.mscx"));
++            QVERIFY(score);score->startCmd();
++            score->setNoteRest(score->firstMeasure()->first(SegmentType::ChordRest),0,NoteVal(60),Fraction(1,1));
++            score->setNoteRest(score->tick2segment(Fraction(1,1),false,SegmentType::ChordRest),0,NoteVal(60),Fraction(1,4));
++            auto before=toChord(score->findCR(Fraction(),0))->findNote(60);
++            auto after=toChord(score->findCR(Fraction(1,1),0))->findNote(60);
++            auto tie=new Tie(score.get());tie->setStartNote(before);tie->setEndNote(after);
++            tie->setTick(Fraction());tie->setTick2(Fraction(1,1));tie->setTrack(0);score->undoAddElement(tie);score->endCmd();
++            auto pedal=new Pedal(score.get());pedal->setTrack(0);pedal->setTick(Fraction());
++            pedal->setTick2(Fraction::fromTicks(2400));score->addElement(pedal);
++            PluginAPI::Score wrapped(score.get());PluginAPI::ScoreObserver observer;observer.setScore(&wrapped);
++            const auto context=observer.contextSnapshot(1920,0,8,true,0);
++            const auto notes=context.value("analysisNotes").toList();QVERIFY(!notes.isEmpty());
++            QCOMPARE(notes.front().toMap().value("attackTick").toInt(),0);
++            QCOMPARE(context.value("pedalWindows").toList().front().toMap().value("start").toInt(),0);
++            }
++
++      void boundedPedalMetadataAndNativeRenderingIsolation()
++            {
++            std::unique_ptr<MasterScore> score(readScore("mscore/scoreobserver/piano.mscx"));
++            QVERIFY(score);score->doLayout();
++            auto pedal=new Pedal(score.get());pedal->setTrack(4);pedal->setTick(Fraction());
++            pedal->setTick2(Fraction::fromTicks(960));score->addElement(pedal);
++            PluginAPI::Score wrapped(score.get());PluginAPI::ScoreObserver observer;observer.setScore(&wrapped);
++            const auto context=observer.contextSnapshot(480,0,8,true,0);
++            QCOMPARE(context.value("parts").toList().size(),1);
++            QCOMPARE(context.value("pedalWindows").toList().size(),1);
++            QCOMPARE(context.value("pedalWindows").toList().front().toMap().value("end").toInt(),960);
++            QCOMPARE(observer.contextSnapshot(960,0,8,true,0).value("pedalWindows").toList().size(),0);
++            for (const auto note:context.value("analysisNotes").toList())
++                  QVERIFY(note.toMap().contains("attackTick"));
++            const auto state=score->state();
++            const auto descriptions=score->style().chordList()->size();
++            auto anchor=context.value("analysisNotes").toList().front().toMap();
++            anchor["chord"]="C7(b9,#11)/E";anchor["chordTick"]=0;anchor["chordUntil"]=960;
++            observer.setScorePreview({anchor});
++            QCOMPARE(score->style().chordList()->size(),descriptions);QVERIFY(score->state()==state);
++            observer.clearAllPreviews();
++            }
+       };
+ QTEST_MAIN(TestScoreObserver)
+ #include "tst_scoreobserver.moc"
+diff --git a/personal/CHANGELOG.md b/personal/CHANGELOG.md
+index 7034f765d..b34cbd174 100644
+--- a/personal/CHANGELOG.md
++++ b/personal/CHANGELOG.md
+@@ -2,6 +2,20 @@
+ 
+ 个人版本记录本仓库的个人维护增量；应用上游版本另由 `config.cmake` 管理。历史源码提交尚未追溯归类，此处从首次建立指南开始记录，不代表此前没有个人改动。
+ 
++## 0.8.0 — 2026-10-06
++
++- 类型：和声助手 1.4.0 的区间识别/人工修正、专用字形与原生颜色保护；上游仍 3.7.0，保留 0.7.1 自动记谱与 0.6 音源改动。
++- 插件：Timeline.js 加权模板、单/多和弦踏板开关、低音/转位与攻击起点连续性、相邻区间合并；高声部扩展音不重设低音和声。摘要/详情各选实时或所属区间；手柄/精确 tick、指定/拆分/合并/抑制/恢复、独立 Undo/Redo。指纹绑定人工修正自动读写，谱面改变须复核；schema 2 分析交换兼容 schema 1，坏导入全量验证后才写盘。
++- 原生边界：仅 events.cpp、notepreview.h、scoreview.cpp、scoreobserver.h/.cpp 五处生产文件。补充攻击 tick、每乐器当前踏板元数据与二分索引；独立 MasterScore 样式副本/原生 Harmony/QPicture，加载尚未使用的 chord list，渲染内容哈希使样式变化失效。最多六条避让行保留 x，单击/双击激活；不创建保存谱面元素，不改音频回调。
++- 原功能：预览调用 Element::curColor 保持原生选中/播放/拖放/隐藏优先级，去除覆盖原生播放颜色的预览下划线；HPiano、原生 curColor 和选区框宽度均未改动。测试中逐像素对照并检验清理恢复。
++- 验证：tst_scoreobserver 16、实际 tst_pluginhost 10、tst_note 11 项全部通过，0 失败/跳过。插件逻辑/配置交换/区间、固定布局/双面板/人工历史/坏导入、真实手柄拖动吸附与绑定恢复通过。最终安装真实宿主连续启动两次，样式与 Am/C 人工区间自动恢复、谱面颜色不变。GUI 使用独立设置与测试进程，未控制用户已打开的谱面。
++- 性能：1000 小节/6000 音符：索引 26.468 ms、1000 快照 1.948 ms、1000 上下文 6.464 ms、数值分析帧 24.044 ms、基础色层几何 21.655 ms；1000 次标记索引高亮 0.703 ms，不含绘制。离线 Node 10000 切片约 1.9 秒，生产 QML 分批最多 32 步/约 6 ms 预算。首次建索引/全谱分析/字形避让仍有成本，无零开销或音频硬实时承诺。
++- 部署：x64 Release 链接/新目录 msvc.install_harmony_1_4_x64 安装通过；同 SDK Qt5QmlModels/WorkerScript 补齐。插件 14 个发布文件在工作区、share/plugins、新安装、已启用副本逐个核对；启用副本旧文件备份 .pre-1.4.0.bak，旧安装/音源/所有历史文件保留。
++- 维护：更新 personal/docs/10、04、README、source-map 与插件 README。音高/踏板不能唯一决定和声，复杂复调可人工修正；最多六行仍可能省略，提供计数。未做用户实谱、长期会话和真实音频/MIDI 硬件验收。
++- Git 父提交：abf9e3453621e4c09398472154f58ba10d9e4958。
++- Git 提交主题：feat(harmony): add editable harmonic regions and native symbol previews。
++- 提交定位：personal-v0.8.0 标签指向本次提交；普通 push 分支/标签，不强推。
++
+ ## 0.7.1 — 2026-10-06
+ 
+ - 类型：自动时值开关的工作区恢复修复、节奏规范依据与字体回退调查；上游仍为 3.7.0，沿用现有文件/偏好格式。
+diff --git a/personal/VERSION b/personal/VERSION
+index 39e898a4f..a3df0a695 100644
+--- a/personal/VERSION
++++ b/personal/VERSION
+@@ -1 +1 @@
+-0.7.1
++0.8.0
+diff --git a/personal/docs/04-feature-map.md b/personal/docs/04-feature-map.md
+index f40d68318..e5b7c5269 100644
+--- a/personal/docs/04-feature-map.md
++++ b/personal/docs/04-feature-map.md
+@@ -85,3 +85,6 @@ rg -n 'QSKIP|add_test|subdirs|MTEST_LINK_MSCOREAPP' mtest
+ 0.5.0 新入口：AppearanceEditor 配置原谱优先、背景遮罩、顶部/右侧共存；applyPreview / previewTickX 实现和声变化 x 锚点；QmlPlugin::showDetailPanel 接受一个已有控件树。编辑遮挡接线见 ScoreView::previewEditBounds / editelement.cpp，回归为 tst_pluginhost。
+ 
+ 自动规范输入时值（个人 0.7.0）：[inputrhythm.cpp](../../libmscore/inputrhythm.cpp)、`noteentry.cpp` / `cmd.cpp` / `score.cpp` 和 `pianoview.cpp` 接线；应用开关在工具菜单，默认开启。规则、复杂对象保护与回归见 [12](12-input-rhythm.md)。
++
++
++0.8.0 和声区间：share/plugins/HarmonyAssistant/Timeline.js 是纯数值加权识别/人工范围，RangeEditor.qml 为手柄/精确 tick/独立历史，Preferences.js 配置单/多踏板与摘要/详情结果。attackTick 与踏板二分索引、私有 Harmony/QPicture 位于 scoreobserver.cpp；NotePreviewEntry 的字形等价与尺寸位于 notepreview.h；状态颜色优先级入口为 ScoreView::paint，单击接线 events.cpp。新回归在 tst_scoreobserver / tst_pluginhost，不修改音频、原生 P 键盘或选区框。
+diff --git a/personal/docs/10-score-observer.md b/personal/docs/10-score-observer.md
+index d0f5fa580..b957e7ece 100644
+--- a/personal/docs/10-score-observer.md
++++ b/personal/docs/10-score-observer.md
+@@ -93,3 +93,14 @@ setActiveScorePreview(tick) 在每乐器有序标记索引二分查当前区间
+ 描述符 chordTick 可不同于来源 Note.tick；来源只数值定位乐器及析构身份。对应变化节拍有 ChordRest 用 segment.pagePos().x，无新音则按相邻节拍 x 插值，使用变化 Measure/System/Page。NotePreviewMarkers 独立存储，颜色表仍按 Note 查找；同一源多个变化不会互相覆盖。chordMask 默认 true；false 仅关背景，不关高亮/碰撞避让。preferExistingHarmony 默认由插件传 true，同 tick/Part 的 Harmony 可清除重复 chord 或 degree 字段，不更改原谱。当前层复用基础标签框并避开固定记号；原生编辑区域优先显示原对象和光标。
+ 
+ QmlPlugin 的 detailPanelHost 是弱窗口对应的 QQuickItem，detailPanelVisible 通知实际显示状态；showDetailPanel(bool) 创建/显隐单个辅助停靠窗口，focusDetailPanel 显式聚焦，panelDetailClosed 区分用户关闭。可选 detailPanelTitle/detailPanelBackground 由 QML 提供。插件通过 visual parent 重挂载同一控件，QObject ownership 保留在原根；没有第二个 QQmlEngine、ScoreObserver 或分析任务。辅助容器拥有 QWindow，插件销毁后 deleteLater 清理 dock；主面板关闭和设置持久化仍沿原生命周期。
++
++
++## 0.8.0：区间输入、原生字形与状态颜色
++
++contextSnapshot 新增每乐器当前踏板窗口、parts、scoreEnd；note descriptor 的 attackTick 沿反向 tie 链找到逻辑攻击起点，带循环保护。踏板窗口按乐器/起点排序并合并严格重叠范围，二分查找只传当前窗口，避免每帧携带全谱踏板。相邻抬/踩踏板边界仍分开。旧字段与接口保留；音乐推理仍在插件 Timeline.js，不在 libmscore 或音频侧。
++
++固定标记使用独立 MasterScore 的样式副本和 Harmony::setHarmony/calculateBoundingRect/draw 记录 QPicture。先 checkChordList 支持尚无原生和弦的谱面；未知后缀不会加入用户谱的 ChordList。批次按文本/字体/缩放/颜色复用；渲染内容 SHA256 纳入 Entry 等价判断，防止同尺寸样式变更不重绘。degreeFont 单独配置，previewStatus 返回 hidden/fontFallback。冲突按实际高度逐个上移，最多六行，x 不改变；绝对页边界和原谱对象继续优先。
++
++events.cpp 在 NORMAL、左键且无修饰键命中可见固定记号时激活，双击路径保留；编辑/foto 交还原生操作。ScoreView 音符预览调用原生 curColor(visible,override)，保持选中/播放/拖放/隐藏颜色，不改变 HPiano 或选区框实现。
++
++插件 Timeline.js 的加权模板、区间/人工覆盖、Preferences.js 新显示模式以及 RangeEditor.qml 与宿主解耦。人工修正由既有配置接口保存，原生不理解其 JSON。schema 2 分析由插件处理，schema 1 兼容。实际回归和部署见 CHANGELOG 0.8.0；接口仍是 GUI 屏幕辅助，首次扫描/避让有成本。
+diff --git a/personal/docs/README.md b/personal/docs/README.md
+index d78f0660b..babeee059 100644
+--- a/personal/docs/README.md
++++ b/personal/docs/README.md
+@@ -57,4 +57,4 @@ TSV 包含主题、源码路径、搜索锚点、基准行号、职责与邻近
+ 
+ ## 个人扩展：和声辅助
+ 
+-个人版本 0.5.0 提供通用播放观察、踏板/时序快照、屏幕临时颜色/标注和自适应停靠，和声解释仍在独立插件；入口与边界见 [10 通用观察/预览](10-score-observer.md)。
++个人版本 0.8.0 提供区间输入元数据、原生和弦字形与状态颜色保护，以及通用播放观察、踏板/时序快照、屏幕临时颜色/标注和自适应停靠，和声解释仍在独立插件；入口与边界见 [10 通用观察/预览](10-score-observer.md)。
+diff --git a/personal/docs/source-map.tsv b/personal/docs/source-map.tsv
+index 6667d5676..6e02503ec 100644
+--- a/personal/docs/source-map.tsv
++++ b/personal/docs/source-map.tsv
+@@ -5,8 +5,8 @@ topic	path	symbol	line	role	tests
+ 命令分发	mscore/musescore.cpp	void MuseScore::cmd(QAction* a)	6808	状态检查与事务	-
+ 主窗口更新	mscore/musescore.cpp	void MuseScore::endCmd(bool undoRedo)	6886	UI与插件结束通知	-
+ 快捷键	mscore/shortcut.cpp	Shortcut::getShortcut(	4397	命令注册与查询	-
+-视图命令	mscore/scoreview.cpp	void ScoreView::cmd(const char* s)	2249	视图本地命令表	-
+-事件与输入模式	mscore/events.cpp	void ScoreView::changeState(ViewState s)	1128	交互状态切换	-
++视图命令	mscore/scoreview.cpp	void ScoreView::cmd(const char* s)	2245	视图本地命令表	-
++事件与输入模式	mscore/events.cpp	void ScoreView::changeState(ViewState s)	1132	交互状态切换	-
+ 核心命令	libmscore/cmd.cpp	void Score::cmd(const QAction* a, EditData& ed)	4492	核心命令分发	mtest/libmscore/tools
+ 编辑事务开始	libmscore/cmd.cpp	void Score::startCmd()	200	开启用户撤销单元	mtest/libmscore/readwriteundoreset
+ 编辑事务结束	libmscore/cmd.cpp	void Score::endCmd(bool rollback)	240	布局及状态同步	mtest/libmscore/readwriteundoreset
+@@ -75,18 +75,18 @@ MIDI左右手拆分	importexport/midiimport/importmidi_lrhand.h	void splitIntoLe
+ 测试构建注册	mtest/CMakeLists.txt	enable_testing()	14	suite注册	-
+ 测试目标	mtest/CreateMtestTarget.cmake	add_test(${TARGET}	105	CTest与QTest接线	-
+ 脚本测试跳过	mtest/testscript/tst_runscripts.cpp	QSKIP(	52	当前不可算运行覆盖	mtest/testscript
+-插件实时观察	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::ScoreObserver(	48	GUI 心跳与生命周期；不修改音频回调	mtest/mscore/scoreobserver
+-持续音缓存	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::ensureIndex(	148	内容状态/范围失效，每声部二分持续音	mtest/mscore/scoreobserver
+-屏幕临时音符颜色	mscore/scoreview.cpp	void ScoreView::setNotePreviewColors(	5737	按 owner 隔离的屏幕色层，旧新局部重绘	mtest/mscore/scoreobserver
+-和声辅助插件	share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml	    function followNativePosition()	749	插件音乐解释、级数、功能音和 GUI 播放合并	mtest/mscore/scoreobserver
+-踏板/琶音上下文	mscore/plugin/api/scoreobserver.cpp	QVariantMap ScoreObserver::contextSnapshot(	298	即时音/上下文分离，小节/休止/踏板边界	mtest/mscore/scoreobserver
+-谱面屏幕标注	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::applyPreview(	370	独立和声变化标记、原谱优先与两层避让	mtest/mscore/pluginhost
++插件实时观察	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::ScoreObserver(	51	GUI 心跳与生命周期；不修改音频回调	mtest/mscore/scoreobserver
++持续音缓存	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::ensureIndex(	157	内容状态/范围失效，每声部二分持续音	mtest/mscore/scoreobserver
++屏幕临时音符颜色	mscore/scoreview.cpp	void ScoreView::setNotePreviewColors(	5733	按 owner 隔离的屏幕色层，旧新局部重绘	mtest/mscore/scoreobserver
++和声辅助插件	share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml	    function followNativePosition()	908	插件音乐解释、级数、功能音和 GUI 播放合并	mtest/mscore/scoreobserver
++踏板/琶音上下文	mscore/plugin/api/scoreobserver.cpp	QVariantMap ScoreObserver::contextSnapshot(	328	即时音/上下文分离，小节/休止/踏板边界	mtest/mscore/scoreobserver
++谱面屏幕标注	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::applyPreview(	408	独立和声变化标记、原谱优先与两层避让	mtest/mscore/pluginhost
+ 插件停靠状态	mscore/plugin/qmlplugin.cpp	void QmlPlugin::attachPanelDock(	33	实际区域/悬浮通知，可选横条高度	mtest/mscore/pluginhost
+-插件菜单/析构回归	mtest/mscore/pluginhost/tst_pluginhost.cpp	class TestPluginHost	36	真实 Qt 主窗口、菜单、重排和停靠	mtest/mscore/pluginhost
+-plugin-preview	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::setActiveScorePreview	521	固定区间高亮，不复制全谱色表	mtest/mscore/pluginhost/tst_pluginhost.cpp
+-plugin-preview	mscore/scoreview.cpp	ScoreView::activateNotePreview	5757	固定记号点击命中与弱目标转发	mtest/mscore/pluginhost/tst_pluginhost.cpp
++插件菜单/析构回归	mtest/mscore/pluginhost/tst_pluginhost.cpp	class TestPluginHost	39	真实 Qt 主窗口、菜单、重排和停靠	mtest/mscore/pluginhost
++plugin-preview	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::setActiveScorePreview	587	固定区间高亮，不复制全谱色表	mtest/mscore/pluginhost/tst_pluginhost.cpp
++plugin-preview	mscore/scoreview.cpp	ScoreView::activateNotePreview	5753	固定记号点击命中与弱目标转发	mtest/mscore/pluginhost/tst_pluginhost.cpp
+ plugin-preview	mscore/plugin/qmlplugin.cpp	QmlPlugin::focusPanel	53	聚焦已有插件窗口，保留停靠状态	mtest/mscore/pluginhost/tst_pluginhost.cpp
+-plugin-display	mscore/plugin/api/scoreobserver.cpp	static qreal previewTickX	354	变化节拍定位，无新音时插值	mtest/mscore/pluginhost/tst_pluginhost.cpp
++plugin-display	mscore/plugin/api/scoreobserver.cpp	static qreal previewTickX	392	变化节拍定位，无新音时插值	mtest/mscore/pluginhost/tst_pluginhost.cpp
+ plugin-display	mscore/plugin/qmlplugin.cpp	QmlPlugin::showDetailPanel	68	共享控件的单辅助停靠窗口	mtest/mscore/pluginhost/tst_pluginhost.cpp
+ plugin-display	mscore/scoreview.cpp	QRectF ScoreView::previewEditBounds	1226	原生编辑/拖动优先区域	mtest/mscore/pluginhost/tst_pluginhost.cpp
+ SF2/SF3解析	audio/midi/fluid/sfont.cpp	bool SFont::load()	840	标准RIFF/LIST边界与HYDRA元数据	mtest/audio/sfloader
+@@ -104,3 +104,5 @@ rhythm-rules	libmscore/durationtype.cpp	std::vector<TDuration> toRhythmicDuratio
+ restored-rhythm-menu	mscore/musescore.cpp	void MuseScore::updateMenus()	2715	Restore personal action into old workspace menus	mtest/mscore/pluginhost
+ text-font-fallback	libmscore/textbase.cpp	QFont TextFragment::font(	851	ScoreText music font vs ordinary Qt font merging	mtest/libmscore/text
+ music-text-fallback	libmscore/sym.cpp	const char* ScoreFont::fallbackTextFont()	7156	Bravura Text fallback; not CJK title fallback	-
++harmony-regions	share/plugins/HarmonyAssistant/Timeline.js	function createBuilder	47	Numeric interval builder and manual overlays	mtest/mscore/scoreobserver
++harmony-range-editing	share/plugins/HarmonyAssistant/RangeEditor.qml	"objectName:""harmonyRangeEditor"""	7	Range handles, ticks and independent history	mtest/mscore/pluginhost
+diff --git a/share/plugins/HarmonyAssistant/Analysis.js b/share/plugins/HarmonyAssistant/Analysis.js
+index 04e173288..29ee9adba 100644
+--- a/share/plugins/HarmonyAssistant/Analysis.js
++++ b/share/plugins/HarmonyAssistant/Analysis.js
+@@ -1,12 +1,12 @@
+ .pragma library
+ 
+ // Exchange data has numeric anchors, no native wrappers or serialized score mutations.
+-function document(frames, fingerprint, config) {
+-    return {format:"HarmonyAssistant.analysis",schema:1,ticksPerQuarter:480,
+-        fingerprint:fingerprint,configuration:config,frames:frames};
++function document(frames, fingerprint, config, regions, overrides) {
++    return {format:"HarmonyAssistant.analysis",schema:2,ticksPerQuarter:480,
++        fingerprint:fingerprint,configuration:config,frames:frames,regions:regions||[],overrides:overrides||[]};
+ }
+ function validate(source) {
+-    if(!source || source.format!=="HarmonyAssistant.analysis" || source.schema!==1 || source.ticksPerQuarter!==480)
++    if(!source || source.format!=="HarmonyAssistant.analysis" || (source.schema!==1 && source.schema!==2) || source.ticksPerQuarter!==480)
+         throw Error("不支持的分析格式 / 时间单位");
+     if(typeof source.fingerprint!=="string" || !/^[0-9a-f]{64}$/.test(source.fingerprint))throw Error("缺少乐谱指纹");
+     if(!Array.isArray(source.frames) || source.frames.length>100000)throw Error("分析帧数量无效");
+@@ -24,6 +24,8 @@ function validate(source) {
+             var note={tick:d.tick,track:d.track,index:d.index,pitch:d.pitch,tpc:d.tpc};
+             if(integer(d.writtenPitch,0,127))note.writtenPitch=d.writtenPitch;
+             if(integer(d.writtenTpc,-1,33))note.writtenTpc=d.writtenTpc;
++            if(integer(d.end,d.tick+1,2147483647))note.end=d.end;
++            if(integer(d.attackTick,0,d.tick))note.attackTick=d.attackTick;
+             notes.push(note);
+         }
+         frames.push({tick:f.tick,bar:integer(f.bar,1,1000000)?f.bar:1,beat:integer(f.beat,1,128)?f.beat:1,
+@@ -31,7 +33,7 @@ function validate(source) {
+             degree:typeof f.degree==="string"?f.degree.slice(0,24):"",notes:notes});
+         last=f.tick;
+     }
+-    return {frames:frames,fingerprint:source.fingerprint};
++    return {frames:frames,fingerprint:source.fingerprint,regions:source.schema===2?source.regions||[]:[],overrides:source.schema===2?source.overrides||[]:[]};
+ }
+ function atTick(frames, tick) {
+     var lo=0,hi=frames.length;
+@@ -44,3 +46,9 @@ function csv(frames) {
+     for(var i=0;i<frames.length;++i){var f=frames[i];rows.push([f.tick,f.bar,f.beat,quote(f.chord),quote(f.degree),quote(f.notes.map(function(n){return n.pitch;}).join(" "))].join(","));}
+     return "\uFEFF"+rows.join("\r\n")+"\r\n";
+ }
++function csvRegions(regions) {
++    function quote(value){return '"'+String(value).replace(/"/g,'""')+'"';}
++    var rows=["startTick,endTick,part,chord,degree,root,bass,source"];
++    for(var i=0;i<regions.length;++i){var r=regions[i];rows.push([r.start,r.end,r.part,quote(r.chord),quote(r.degree),r.root,r.bass,quote(r.source)].join(","));}
++    return "\uFEFF"+rows.join("\r\n")+"\r\n";
++}
+diff --git a/share/plugins/HarmonyAssistant/AppearanceEditor.qml b/share/plugins/HarmonyAssistant/AppearanceEditor.qml
+index 7edc4e1d5..d418891ae 100644
+--- a/share/plugins/HarmonyAssistant/AppearanceEditor.qml
++++ b/share/plugins/HarmonyAssistant/AppearanceEditor.qml
+@@ -15,6 +15,14 @@ Column {
+         modified(Preferences.clean(next))
+     }
+     UiLabel {text:"显示位置与谱面记号"; font.bold:true; color:"#343a3f"; font.pixelSize:13}
++    RowLayout {width:parent.width
++        UiLabel {text:"顶部主和弦";color:"#697077";font.pixelSize:11}
++        ComboBox {model:["实时结果","所属和弦"];currentIndex:configuration.summaryMode;Layout.fillWidth:true;onActivated:editor.option("summaryMode",currentIndex)}
++    }
++    RowLayout {width:parent.width
++        UiLabel {text:"侧边主和弦";color:"#697077";font.pixelSize:11}
++        ComboBox {model:["实时结果","所属和弦"];currentIndex:configuration.detailMode;Layout.fillWidth:true;onActivated:editor.option("detailMode",currentIndex)}
++    }
+     Switch {text:"顶部摘要同时显示右侧详情"; checked:configuration.dualPanel; onToggled:if(checked!==configuration.dualPanel)editor.option("dualPanel",checked)}
+     RowLayout {
+         width:parent.width
+@@ -52,6 +60,11 @@ Column {
+     }
+     Switch {text:"优先保留原谱和弦 / 级数"; checked:configuration.respectExistingHarmony; onToggled:if(checked!==configuration.respectExistingHarmony)editor.option("respectExistingHarmony",checked)}
+     Switch {text:"记号背景遮罩"; checked:configuration.chordMask; onToggled:if(checked!==configuration.chordMask)editor.option("chordMask",checked)}
++    Switch {text:"小节开头重述所属和弦";checked:configuration.repeatBars;onToggled:if(checked!==configuration.repeatBars)editor.option("repeatBars",checked)}
++    RowLayout {width:parent.width
++        UiLabel {text:"级数字体";color:"#697077";font.pixelSize:11}
++        TextField {text:configuration.degreeFont;Layout.fillWidth:true;maximumLength:64;onEditingFinished:if(text.trim().length)editor.option("degreeFont",text.trim())}
++    }
+     UiLabel {width:parent.width; text:"记号对齐和弦变化的时间位置；关闭遮罩后只显示文字，仍避让原谱，当前记号以文字色高亮。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
+     UiLabel {width:parent.width; text:"同位置已有原谱和弦时，分析留在面板，谱面只补充级数；已有罗马级数时只补充和弦。关闭可同时显示，仍会避让。编辑框始终优先。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
+     Switch {text:"强调含调外音的和弦"; checked:configuration.chromaticAccent; onToggled:if(checked!==configuration.chromaticAccent)editor.option("chromaticAccent",checked)}
+diff --git a/share/plugins/HarmonyAssistant/Harmony.js b/share/plugins/HarmonyAssistant/Harmony.js
+index b3f03a986..f846f30f5 100644
+--- a/share/plugins/HarmonyAssistant/Harmony.js
++++ b/share/plugins/HarmonyAssistant/Harmony.js
+@@ -107,6 +107,41 @@ function detect(pitches) {
+     best.alternatives=alternatives;
+     return best;
+ }
++function detectWeighted(notes, weights, previous, tonic, minorKey, tick) {
++    var maximum=0,mask=0,bass=null,held=notes.filter(function(n){return n.end===undefined || n.end>tick;});
++    var pool=held.length?held:notes;
++    for(var p=0;p<pool.length;++p)if(!bass || pool[p].pitch<bass.pitch)bass=pool[p];
++    for(var pc in weights)maximum=Math.max(maximum,weights[pc]);
++    if(!maximum)return {root:-1,definition:-1,kind:"空拍",alternatives:[]};
++    var normalized=[];
++    for(var i=0;i<12;++i){normalized[i]=(weights[i]||0)/maximum;if(normalized[i]>=.15)mask|=1<<i;}
++    if(bitCount(mask)<3)return detect(notes.map(function(n){return n.pitch;}));
++    var best=null,runner=null,scale=minorKey?[0,2,3,5,7,8,10]:[0,2,4,5,7,9,11];
++    for(var t=0;t<templates.length;++t) {
++        var candidate=templates[t],definition=defs[candidate.definition],hits=bitCount(mask&candidate.mask);
++        if(hits<3)continue;
++        var cost=.23*Math.max(0,definition.intervals.length-3);
++        for(i=0;i<12;++i) {
++            if(candidate.mask&(1<<i)) {
++                var missing=1-normalized[i];
++                cost+=missing*((candidate.fifth&(1<<i))?.45:i===candidate.root?1.8:3.2);
++            } else cost+=normalized[i]*3.0;
++        }
++        if(bass) {
++            var bassPc=mod12(bass.pitch);
++            if(candidate.root===bassPc)cost-=.6;
++            else if(candidate.mask&(1<<bassPc))cost-=.22;
++        }
++        if(previous && previous.root===candidate.root)cost-=previous.definition===candidate.definition?.65:.3;
++        if(scale.indexOf(mod12(candidate.root-tonic))<0)cost+=.12;
++        var result={root:candidate.root,definition:candidate.definition,cost:cost};
++        if(!best || cost<best.cost){runner=best;best=result;}else if(!runner||cost<runner.cost)runner=result;
++    }
++    if(!best || best.cost>6)return {root:-1,definition:-1,kind:"未确定和弦",alternatives:[]};
++    best.alternatives=runner && runner.cost-best.cost<.65?[runner]:[];
++    best.kind=best.alternatives.length?"上下文匹配 · 存在歧义":"上下文匹配";
++    return best;
++}
+ function roman(tonic, minorKey, chordRoot, definition) {
+     if(chordRoot<0 || definition<0) return "—";
+     // Conventional Roman numerals reference the parallel major: A minor uses ♭III, ♭VI, ♭VII.
+diff --git a/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml b/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
+index 22f489a7e..b5553a272 100644
+--- a/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
++++ b/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
+@@ -5,6 +5,7 @@ import MuseScore 3.0
+ import "Harmony.js" as Harmony
+ import "Preferences.js" as Preferences
+ import "Analysis.js" as Analysis
++import "Timeline.js" as Timeline
+ import QtQuick.Dialogs 1.3
+ import QtQuick.Window 2.2
+ 
+@@ -12,7 +13,7 @@ MuseScore {
+     id: root
+     menuPath: "Plugins.Harmony Assistant"
+     description: "钢琴和声助手：持续音识别、级数、音程功能与可选谱面配色。"
+-    version: "1.3.0"
++    version: "1.4.0"
+     requiresScore: true
+     pluginType: "dock"
+     dockArea: "right"
+@@ -31,8 +32,32 @@ MuseScore {
+     property color chordInk:configuration.chromaticAccent && chromaticChord ? configuration.chromaticColor : ink
+     property var contextNotes: []
+     property var analysisRecords: []
++    property var analysisRegions: []
++    property var automaticRegions: []
++    property var regionBuilder: null
++    property var manualOverrides: []
++    property var editUndo: []
++    property var editRedo: []
++    property string loadedFingerprint: ""
++    property bool manualNeedsReview: false
++    property int annotationTick: -1
++    property string annotationSelectionKey: ""
++    property int liveRoot: -1
++    property int liveDefinition: -1
++    property string instantChordText: "—"
++    property string instantDegreeText: "—"
++    property int focusedPart: 0
++    property var ownedRegion: Timeline.atTick(analysisRegions,currentTick,focusedPart)
++    property string summaryChordText: configuration.summaryMode===0 ? instantChordText : ownedRegion ? ownedRegion.chord : analysisDirty ? "分析中…" : "—"
++    property string summaryDegreeText: configuration.summaryMode===0 ? instantDegreeText : ownedRegion ? ownedRegion.degree : "—"
++    property int summaryRoot: configuration.summaryMode===0 ? liveRoot : ownedRegion ? ownedRegion.root : -1
++    property int summaryDefinition: configuration.summaryMode===0 ? liveDefinition : ownedRegion ? ownedRegion.definition : -1
++    property color summaryInk: configuration.chromaticAccent && Harmony.isChromatic(Harmony.rootPcs[keyTonic.currentIndex],keyMode.currentIndex===1,summaryRoot,summaryDefinition) ? configuration.chromaticColor : ink
++    property var summaryToneRows: makeToneRows(summaryRoot,summaryDefinition,configuration.summaryMode===1 && ownedRegion ? ownedRegion.notes : contextNotes.length ? contextNotes : currentNotes)
++    property int analysisEnd: analysisRecords.length ? (analysisRecords[analysisRecords.length-1].scoreEnd || analysisRecords[analysisRecords.length-1].tick+480) : 1920
+     property var pendingRecords: []
+     property var importedRecords: []
++    property var importedRegions: []
+     property string analysisFingerprint: ""
+     property int analysisNextTick: 0
+     property bool analysisDirty: true
+@@ -92,14 +117,89 @@ MuseScore {
+         var c=JSON.parse(JSON.stringify(configuration));c.ribbonAlign=index
+         configuration=Preferences.clean(c);configurationTimer.restart()
+     }
++    function partForTrack(track) {
++        if(curScore)for(var i=0;i<curScore.parts.length;++i)if(track>=curScore.parts[i].startTrack && track<curScore.parts[i].endTrack)return curScore.parts[i].startTrack
++        return firstTrack
++    }
++    function highlightedTick() {return lastPlaying && followPlayback.checked ? currentTick : annotationTick>=0 ? annotationTick : currentTick}
++    function rebuildRegions() {
++        analysisRegions=Timeline.overlay(Timeline.overlay(automaticRegions,importedRegions),manualNeedsReview?[]:manualOverrides)
++    }
++    function loadCorrections() {
++        if(!advancedNative || loadedFingerprint===analysisFingerprint)return
++        if(manualOverrides.length && loadedFingerprint.length) {
++            manualNeedsReview=true;noticeText="谱面已变更；人工范围暂未应用，请复核后确认。";return
++        }
++        loadedFingerprint=analysisFingerprint
++        var saved=observer.loadConfiguration("HarmonyAssistant-regions-"+analysisFingerprint)
++        if(saved.schema===1 && saved.fingerprint===analysisFingerprint) {
++            try{manualOverrides=Timeline.validEdits(saved.overrides)}catch(error){noticeText="人工范围未读取："+error}
++        }
++    }
++    function saveCorrections() {
++        if(!advancedNative || !loadedFingerprint.length || manualNeedsReview)return
++        if(!observer.saveConfiguration("HarmonyAssistant-regions-"+loadedFingerprint,{schema:1,fingerprint:loadedFingerprint,overrides:manualOverrides}))noticeText="人工范围保存失败。"
++    }
++    function editRange(command,start,end,rootIndex,qualityIndex,bassIndex) {
++        if(analysisDirty){noticeText="正在更新和声区间，请稍候。";return}
++        if(command==="select"){openAnnotation(start,focusedPart);return}
++        if(command==="review"){loadedFingerprint=analysisFingerprint;manualNeedsReview=false;rebuildRegions();saveCorrections();applyScorePreview();return}
++        var next=Timeline.clone(manualOverrides),region=ownedRegion
++        if(command==="undo" || command==="redo") {
++            var source=command==="undo"?editUndo:editRedo,target=command==="undo"?editRedo:editUndo
++            if(!source.length)return
++            target=target.concat([Timeline.clone(manualOverrides)]);next=source[source.length-1];source=source.slice(0,-1)
++            if(command==="undo"){editUndo=source;editRedo=target}else{editRedo=source;editUndo=target}
++        } else {
++            if(manualNeedsReview){noticeText="请先复核已有人工范围。";return}
++            if(command==="split" && region){next.push(Timeline.clone(region));next[next.length-1].start=start}
++            else if(command==="merge" && region) {
++                var previous=null
++                for(var i=0;i<analysisRegions.length;++i)if(analysisRegions[i].part===region.part && analysisRegions[i].end===region.start)previous=analysisRegions[i]
++                if(!previous){noticeText="没有相邻的前一和弦。";return}
++                var merged=Timeline.clone(previous);merged.end=region.end;next.push(merged);annotationTick=merged.start
++            } else {
++                if(start<0 || end<=start || end>analysisEnd){noticeText="范围必须在谱内，且终点晚于起点。";return}
++                if(command==="restore")next=Timeline.restore(next,start,end,partForTrack(selectionTrack))
++                else {
++                    if(region && region.source==="manual")next=next.filter(function(n){return !(n.part===region.part && n.start===region.start && n.end===region.end)})
++                    var edit=region?Timeline.clone(region):{part:partForTrack(selectionTrack),notes:Timeline.clone(currentNotes)}
++                    if(!edit.notes.length) {
++                        // A rest still has a time position. Use a nearby numeric anchor in this part.
++                        var nearest=null,distance=Infinity
++                        for(var a=0;a<analysisRecords.length;++a)for(var b=0;b<analysisRecords[a].notes.length;++b) {
++                            var candidate=analysisRecords[a].notes[b],delta=Math.abs(candidate.tick-start)
++                            if(partForTrack(candidate.track)===edit.part && delta<distance){nearest=candidate;distance=delta}
++                        }
++                        if(nearest)edit.notes=[Timeline.clone(nearest)]
++                    }
++                    if(command==="assign") {
++                        var info=Timeline.describe({root:Harmony.rootPcs[rootIndex],definition:qualityIndex},edit.notes,start,Harmony.rootPcs[keyTonic.currentIndex],keyMode.currentIndex===1)
++                        if(bassIndex>0) {
++                            info.bass=Harmony.rootPcs[bassIndex-1]
++                            info.chord=info.chord.split("/")[0]+(info.bass!==info.root?"/"+Harmony.rootNames[bassIndex-1]:"")
++                        }
++                        for(var field in info)edit[field]=info[field]
++                    }
++                    if(edit.root===undefined){edit.root=-1;edit.definition=-1}
++                    edit.start=start;edit.end=end;edit.source="manual";edit.suppressed=command==="suppress";next.push(edit);annotationTick=start
++                }
++            }
++            editUndo=editUndo.concat([Timeline.clone(manualOverrides)]).slice(-100);editRedo=[]
++        }
++        manualOverrides=Timeline.validEdits(next);loadedFingerprint=analysisFingerprint
++        rebuildRegions();saveCorrections();analyze();applyScorePreview()
++    }
+     function openAnnotation(tick,track) {
+         if(!curScore)return
++        annotationTick=tick
+         if(!lastPlaying) {
+             var partEnd=curScore.nstaves*4
+             for(var p=0;p<curScore.parts.length;++p)if(curScore.parts[p].startTrack===track){partEnd=curScore.parts[p].endTrack;break}
+             var frame=observer.snapshot(tick,track,partEnd,false)
+             if(frame.notes.length) {var note=resolveNote(curScore,frame.notes[0]);if(note)curScore.selection.select(note)}
+             selectionTrack=track;setScope();displayTick(tick,true)
++            var selected=selectedLocation();annotationSelectionKey=selected?selected.tick+":"+selected.track:""
+         }
+         if(typeof root.focusPanel==="function")root.focusPanel()
+         if(root.ribbon)openDetails()
+@@ -135,9 +235,10 @@ MuseScore {
+         if(fixedChordNative) {
+             d.chord=configuration.chordContent===1 ? "" : frame.chord
+             d.degree=configuration.chordContent===0 ? "" : frame.degree
+-            d.chordTick=frame.tick;d.chordUntil=frame.tick
++            d.chordTick=frame.start===undefined?frame.tick:frame.start;d.chordUntil=frame.end===undefined?frame.tick:frame.end
+             d.chordOrder=configuration.chordOrder;d.chordScale=configuration.chordScale/100
+             d.chordFont=["","Edwin","Arial"][configuration.chordFont]
++            d.degreeFont=configuration.degreeFont
+             d.chordColor=configuration.chromaticAccent && frame.chromatic ? configuration.chromaticColor : configuration.chordColor
+             d.highlightColor=configuration.highlightColor;d.highlightBackground=configuration.highlightBackground
+             d.preferExistingHarmony=configuration.respectExistingHarmony
+@@ -190,16 +291,16 @@ MuseScore {
+         if(!started || loadingConfiguration)return
+         syncDetailPanel()
+         configurationTimer.restart()
+-        if(rebuild!==false) {analysisDirty=true; analysisTimer.stop()}
++        if(rebuild!==false) {analysisDirty=true; regionBuilder=null;analysisTimer.stop()}
+         requestRefresh(false)
+         if(advancedNative) {
+             if(rebuild===false && !analysisDirty)applyScorePreview()
+             else {observer.setScorePreview([]); scheduleAnalysis()}
+         }
+     }
+-    function needsAnalysis() {return advancedNative && ((scoreColoring.checked && allColor.checked) || showChords.checked || showFunctions.checked || pendingExport.length>0)}
++    function needsAnalysis() {return advancedNative && ((scoreColoring.checked && allColor.checked) || showChords.checked || showFunctions.checked || configuration.summaryMode===1 || configuration.detailMode===1 || pendingExport.length>0)}
+     function scheduleAnalysis() {
+-        if(!started || !surfaceActive || !curScore || !needsAnalysis() || analysisTimer.running || !analysisDirty)return
++        if(!started || !surfaceActive || !curScore || !needsAnalysis() || analysisTimer.running || regionBuilder || !analysisDirty)return
+         setScope()
+         pendingRecords=[]
+         analysisNextTick=0
+@@ -225,50 +326,80 @@ MuseScore {
+             degree=Harmony.roman(tonic,keyMode.currentIndex===1,result.root,result.definition)
+         }
+         return {tick:frame.tick,bar:frame.bar,beat:frame.beat,root:result.root,definition:result.definition,
+-            chord:chord,degree:degree,notes:notes,chromatic:Harmony.isChromatic(tonic,keyMode.currentIndex===1,result.root,result.definition)}
++            chord:chord,degree:degree,notes:notes,parts:frame.parts,pedalWindows:frame.pedalWindows,scoreEnd:frame.scoreEnd,keySignature:frame.keySignature,imported:!!imported,chromatic:Harmony.isChromatic(tonic,keyMode.currentIndex===1,result.root,result.definition)}
+     }
+     function buildAnalysisChunk() {
+         if(!curScore || !surfaceActive || !needsAnalysis())return
++        if(regionBuilder){buildRegionChunk();return}
+         var batch=observer.analysisFrames(analysisNextTick,32,firstTrack,endTrack,pedalContext.checked,windowTicks())
+         analysisFingerprint=batch.fingerprint || ""
+         var frames=batch.frames || []
+         for(var i=0;i<frames.length;++i)pendingRecords.push(frameResult(frames[i]))
+         analysisNextTick=batch.nextTick
+         if(analysisNextTick>=0) {analysisTimer.start(); return}
+-        analysisRecords=pendingRecords; pendingRecords=[]; analysisDirty=false
+-        applyScorePreview()
++        analysisRecords=pendingRecords;pendingRecords=[];loadCorrections()
++        regionBuilder=Timeline.createBuilder(analysisRecords,collectPreferences(),firstTrack)
++        buildRegionChunk()
++    }
++    function buildRegionChunk() {
++        var startedAt=Date.now(),complete=false
++        for(var count=0;count<32 && Date.now()-startedAt<6;++count)if(Timeline.step(regionBuilder,1)){complete=true;break}
++        if(!complete){analysisTimer.start();return}
++        automaticRegions=regionBuilder.regions;regionBuilder=null;analysisDirty=false
++        rebuildRegions();analyze();applyScorePreview()
+         if(pendingExport.length){var action=pendingExport;pendingExport="";chooseFile(action)}
+     }
+     function applyScorePreview() {
+         if(!advancedNative)return
+-        var descriptors=[], lastChord="", lastBar=-1, marker=null
++        var descriptors=[],written={},markers={},regions=analysisRegions
++        for(var r=0;r<regions.length;++r) {
++            var region=regions[r]
++            if(showChords.checked && region.notes.length) {
++                var anchor=region.notes.filter(function(n){return n.tick===region.start})[0]||region.notes[0]
++                var marker=chordDescriptor(anchor,region);markers[region.part+":"+region.start]=marker
++            }
++        }
+         for(var i=0;i<analysisRecords.length;++i) {
+-            var frame=analysisRecords[i], onset=[]
+-            if(frame.root<0){lastChord="";marker=null;continue}
+-            // Attribute notes when they are written; later sustained contexts cannot recolor an earlier attack.
+-            for(var n=0;n<frame.notes.length;++n)if(frame.notes[n].tick===frame.tick)onset.push(frame.notes[n])
+-            var signature=frame.chord+"\t"+frame.degree
+-            var changed=signature!==lastChord || (fixedChordNative && onset.length && frame.bar!==lastBar)
+-            var newMarker=showChords.checked && changed && frame.notes.length && (fixedChordNative || onset.length) ?
+-                chordDescriptor(onset.length ? onset[0] : frame.notes[0],frame) : null
+-            for(n=0;n<onset.length;++n) {
+-                var d=JSON.parse(JSON.stringify(onset[n]))
+-                if(scoreColoring.checked && allColor.checked)d.color=colorFor(d.pitch,frame.root,frame.definition)
+-                if(showFunctions.checked)d.label=functionText(d.pitch,frame.root,frame.definition)
+-                if(newMarker && n===0) {
+-                    for(var key in newMarker)d[key]=newMarker[key]
+-                    marker=d
++            var frame=analysisRecords[i]
++            for(var n=0;n<frame.notes.length;++n) {
++                var note=frame.notes[n]
++                if(note.tick!==frame.tick)continue
++                var key=note.tick+":"+note.track+":"+note.index
++                if(written[key])continue
++                written[key]=true
++                var part=partForTrack(note.track),owned=Timeline.atTick(regions,frame.tick,part)
++                if(!owned)continue
++                var d=Timeline.clone(note)
++                if(scoreColoring.checked && allColor.checked)d.color=colorFor(d.pitch,owned.root,owned.definition)
++                if(showFunctions.checked)d.label=functionText(d.pitch,owned.root,owned.definition)
++                var markerKey=part+":"+frame.tick,m=markers[markerKey]
++                if(m && m.track===note.track && m.index===note.index) {
++                    for(var field in m)d[field]=m[field]
++                    delete markers[markerKey]
+                 }
+                 if(d.color || d.label || d.chord || d.degree)descriptors.push(d)
+             }
+-            if(newMarker && !onset.length) {marker=newMarker;descriptors.push(marker)}
+-            if(marker)marker.chordUntil=i+1<analysisRecords.length ? analysisRecords[i+1].tick : frame.tick+480
+-            lastChord=signature;lastBar=frame.bar
++        }
++        for(var markerKey in markers)descriptors.push(markers[markerKey])
++        if(configuration.repeatBars && showChords.checked) {
++            var lastBar=-1
++            for(i=0;i<analysisRecords.length;++i) {
++                frame=analysisRecords[i]
++                if(frame.bar===lastBar)continue
++                lastBar=frame.bar
++                for(r=0;r<regions.length;++r)if(regions[r].start<frame.tick && frame.tick<regions[r].end && regions[r].notes.length) {
++                    var repeated=Timeline.clone(regions[r]);repeated.start=frame.tick
++                    descriptors.push(chordDescriptor(repeated.notes[0],repeated))
++                }
++            }
+         }
+         observer.setScorePreview(descriptors)
+-        // The active layer must be last so it can highlight labels during playback.
+-        observer.clearNotePreviewColors()
+-        repaintNotes()
++        observer.clearNotePreviewColors();repaintNotes()
++        if(typeof observer.previewStatus==="function") {
++            var status=observer.previewStatus()
++            if(status.hidden>0)noticeText=status.hidden+" 个记号空间不足；分析及范围编辑仍可查看。"
++            else if(status.fontFallback)noticeText="记号字体缺失，已回退到 "+status.fontFallback
++        }
+     }
+     function prepareExport(action) {
+         pendingExport=action
+@@ -286,16 +417,21 @@ MuseScore {
+                 if(action==="import-config") {applyPreferences(Preferences.clean(parsed));savePreferences();noticeText="配置已导入并保存。"}
+                 else {
+                     var imported=Analysis.validate(parsed)
++                    // Validate every section before changing memory or persisted corrections.
++                    var overrides=Timeline.validEdits(imported.overrides||[]),regions=Timeline.validEdits(imported.regions||[])
+                     setScope()
+-                    var fingerprint=observer.contextSnapshot(0,firstTrack,endTrack,pedalContext.checked,windowTicks(),false).fingerprint
++                    var context=observer.contextSnapshot(0,firstTrack,endTrack,pedalContext.checked,windowTicks(),false),fingerprint=context.fingerprint
+                     if(imported.fingerprint!==fingerprint)throw Error("分析与当前乐谱 / 乐器范围不一致，未应用")
+-                    importedRecords=imported.frames; analysisDirty=true; scheduleAnalysis(); requestRefresh(false)
++                    overrides.concat(regions).forEach(function(r){if((context.scoreEnd && r.end>context.scoreEnd) || r.part<firstTrack || r.part>=endTrack || partForTrack(r.part)!==r.part)throw Error("分析区间超出乐谱 / 乐器范围")})
++                    manualOverrides=overrides;loadedFingerprint=fingerprint;manualNeedsReview=false;editUndo=[];editRedo=[];saveCorrections()
++                    importedRegions=regions;importedRegions.forEach(function(r){r.source="imported"})
++                    importedRecords=importedRegions.length?[]:imported.frames; analysisDirty=true; scheduleAnalysis(); requestRefresh(false)
+                     noticeText="已导入 "+imported.frames.length+" 个分析切片。"
+                 }
+             } else {
+                 content=action==="export-config" ? JSON.stringify(collectPreferences(),null,2) :
+-                    action==="csv" ? Analysis.csv(analysisRecords) :
+-                    JSON.stringify(Analysis.document(analysisRecords,analysisFingerprint,collectPreferences()),null,2)
++                    action==="csv" ? Analysis.csvRegions(analysisRegions) :
++                    JSON.stringify(Analysis.document(analysisRecords,analysisFingerprint,collectPreferences(),analysisRegions,manualOverrides),null,2)
+                 var suffix=action==="csv"?".csv":".json"
+                 if(path.toLowerCase().slice(-suffix.length)!==suffix)path+=suffix
+                 if(!observer.writeTextFile(path,content))throw Error("无法写入文件")
+@@ -357,6 +493,7 @@ MuseScore {
+         return null
+     }
+     function setScope() {
++        focusedPart=partForTrack(selectionTrack)
+         firstTrack = 0
+         endTrack = curScore.nstaves * 4
+         scopeText = "全谱 · 全部声部"
+@@ -375,6 +512,7 @@ MuseScore {
+     }
+     function changeScore() {
+         if (same(curScore, ownerScore)) return
++        saveCorrections()
+         undoPause = false
+         restoreColors(true)
+         buildTimer.stop()
+@@ -386,7 +524,9 @@ MuseScore {
+         undoPause = false
+         timeline = []
+         analysisTimer.stop()
++        manualOverrides=[];editUndo=[];editRedo=[];analysisRegions=[];automaticRegions=[];regionBuilder=null;loadedFingerprint="";manualNeedsReview=false;annotationTick=-1
+         importedRecords = []
++        importedRegions = []
+         analysisRecords = []
+         analysisDirty = true
+         cacheDirty = true
+@@ -420,8 +560,9 @@ MuseScore {
+             buildTimer.stop()
+             buildSegment = null
+             analysisDirty = true
++            regionBuilder = null
+             if (advancedNative) observer.clearAllPreviews()
+-            if (importedRecords.length) {importedRecords=[]; noticeText="乐谱已变更，已退出导入结果；请重新分析。"}
++            if (importedRecords.length || importedRegions.length) {importedRecords=[];importedRegions=[]; noticeText="乐谱已变更，已退出导入结果；请重新分析。"}
+         }
+         if (surfaceActive) refreshTimer.restart()
+     }
+@@ -438,7 +579,13 @@ MuseScore {
+         selectionTrack = location.track
+         var oldFirst = firstTrack, oldEnd = endTrack
+         setScope()
+-        if (oldFirst !== firstTrack || oldEnd !== endTrack) {cacheDirty = true;analysisDirty=true;importedRecords=[];if(advancedNative)observer.setScorePreview([])}
++        if (oldFirst !== firstTrack || oldEnd !== endTrack) {
++            saveCorrections();manualOverrides=[];editUndo=[];editRedo=[];loadedFingerprint="";manualNeedsReview=false
++            analysisRegions=[];automaticRegions=[];regionBuilder=null;cacheDirty=true;analysisDirty=true;importedRecords=[];importedRegions=[];annotationTick=-1
++            if(advancedNative)observer.setScorePreview([])
++        }
++        if(annotationSelectionKey.length && annotationSelectionKey===location.tick+":"+location.track && annotationTick>=0)location.tick=annotationTick
++        else {annotationTick=-1;annotationSelectionKey=""}
+         currentTick = location.tick
+         if (observer) {cacheDirty = false; displayTick(location.tick, true)}
+         else if (cacheDirty) beginBuild()
+@@ -530,7 +677,7 @@ MuseScore {
+         for (var i = 0; i < notes.length; ++i) pitches.push(notes[i].pitch)
+         var changed = JSON.stringify(notes) !== JSON.stringify(currentNotes)
+         currentTick = tick
+-        if(fixedChordNative)observer.setActiveScorePreview(lastPlaying && followPlayback.checked ? tick : -1)
++        if(fixedChordNative)observer.setActiveScorePreview(highlightedTick())
+         positionText = lastPlaying && followPlayback.checked ? "正在播放 · 包含持续音" : "当前选区 · 包含持续音"
+         if (observer && nativeSnapshot.bar !== undefined)
+             positionText = (lastPlaying && followPlayback.checked ? "播放" : "选区") +
+@@ -580,12 +727,14 @@ MuseScore {
+             chordDefinition = qualityCombo.currentIndex
+             matchText = "手动指定"
+         }
++        liveRoot=chordRoot;liveDefinition=chordDefinition
+         updateTexts()
+         updatePianoRange()
+         repaintNotes()
+         scheduleAnalysis()
+     }
+     function updateTexts() {
++        chordRoot=liveRoot;chordDefinition=liveDefinition
+         chordText = chordRoot < 0 ? (currentPitches.length === 1 ? noteName(currentNotes[0]) : "—") :
+                 rootName() + Harmony.defs[chordDefinition].suffix
+         degreeText = Harmony.roman(Harmony.rootPcs[keyTonic.currentIndex], keyMode.currentIndex === 1,
+@@ -599,27 +748,37 @@ MuseScore {
+             inversionText = Harmony.inversion(label) + " · 低音 " + noteName(bass)
+             if (Harmony.mod12(bass.pitch) !== chordRoot) chordText += "/" + Harmony.spelledName(bass.tpc, bass.pitch, prefersFlats())
+         }
++        instantChordText=chordText;instantDegreeText=degreeText
++        if(configuration.detailMode===1 && ownedRegion) {
++            chordRoot=ownedRegion.root;chordDefinition=ownedRegion.definition
++            chordText=ownedRegion.chord;degreeText=ownedRegion.degree
++            matchText="所属和弦 · "+(ownedRegion.source==="manual"?"人工修正":ownedRegion.kind||"已识别")
++            inversionText=Harmony.inversion(Harmony.labelFor(ownedRegion.bass,chordRoot,chordDefinition))+" · 区间 ticks "+ownedRegion.start+"–"+ownedRegion.end
++        }
++        var roleNotes = configuration.detailMode===1 && ownedRegion ? ownedRegion.notes : contextNotes.length ? contextNotes : currentNotes
++        toneRows = makeToneRows(chordRoot,chordDefinition,roleNotes)
++    }
++    function makeToneRows(toneRoot,toneDefinition,roleNotes) {
+         var degrees = ["1","3","5","7","9","11","13"], rows = []
+-        var roleNotes = contextNotes.length ? contextNotes : currentNotes
+         for (var d = 0; d < degrees.length; ++d) {
+             var degree = degrees[d], labels = [], played = [], expected = false
+-            if (chordDefinition >= 0) {
+-                var definition = Harmony.defs[chordDefinition]
++            if (toneDefinition >= 0) {
++                var definition = Harmony.defs[toneDefinition]
+                 for (var k = 0; k < definition.labels.length; ++k)
+                     if (Harmony.role(definition.labels[k]) === degree) {
+                         expected = true
+                         labels.push(definition.labels[k])
+                     }
+             }
+-            for (i = 0; i < roleNotes.length; ++i) {
+-                var functionLabel = Harmony.labelFor(roleNotes[i].pitch, chordRoot, chordDefinition)
++            for (var i = 0; i < roleNotes.length; ++i) {
++                var functionLabel = Harmony.labelFor(roleNotes[i].pitch, toneRoot, toneDefinition)
+                 if (Harmony.role(functionLabel) === degree) played.push(noteName(roleNotes[i]))
+             }
+             rows.push({degree:degree, label:labels.length ? labels.join(" / ") : degree,
+                        notes:played.length ? played.join(" · ") : expected ? "缺音" : "—",
+                        present:played.length > 0, expected:expected, color:configuration.colors[degree]})
+         }
+-        toneRows = rows
++        return rows
+     }
+     function locatorKey(note) {return note.tick + ":" + note.track + ":" + note.index + ":" + note.pitch + ":" + note.tpc}
+     function resolveNote(score, location) {
+@@ -698,7 +857,7 @@ MuseScore {
+                 }
+             }
+             observer.setNotePreviewColors(descriptors)
+-            if(fixedChordNative)observer.setActiveScorePreview(lastPlaying && followPlayback.checked ? currentTick : -1)
++            if(fixedChordNative)observer.setActiveScorePreview(highlightedTick())
+         } else syncColors(scoreColoring.checked && !lastPlaying)
+     }
+     function restoreColors(all) {
+@@ -802,7 +961,7 @@ MuseScore {
+         if (surfaceActive) {followNativePosition(); requestRefresh(false)}
+     }
+     onRibbonChanged:syncDetailPanel()
+-    Component.onDestruction: {if (started) {savePreferences(); undoPause = false; restoreColors(true); if(advancedNative)observer.clearAllPreviews()}}
++    Component.onDestruction: {if (started) {savePreferences();saveCorrections(); undoPause = false; restoreColors(true); if(advancedNative)observer.clearAllPreviews()}}
+     Timer {id:configurationTimer; interval:350; onTriggered:savePreferences()}
+     Timer {id:analysisTimer; interval:12; onTriggered:buildAnalysisChunk()}
+     Loader {id:settingsStore; active:false; source:"SettingsStore.qml"; onLoaded:{if(item.payload.length){try{applyPreferences(JSON.parse(item.payload))}catch(error){noticeText="配置未读取："+error}}}}
+@@ -1005,6 +1164,10 @@ MuseScore {
+                         Button {
+                             font.family: "Microsoft YaHei UI";text:"读调号"; implicitHeight:32; font.pixelSize:11; onClicked:{manualKey=false; if(currentTick>=0)initializeKey(currentTick); updateTexts(); optionsChanged()}}
+                     }
++                    RowLayout {width:parent.width
++                        UiLabel {text:"踏板内识别";color:muted;font.pixelSize:11}
++                        ComboBox {model:["单个和弦","多个和弦"];currentIndex:configuration.pedalMode;Layout.fillWidth:true;onActivated:{var c=Timeline.clone(configuration);c.pedalMode=currentIndex;configuration=Preferences.clean(c);optionsChanged()}}
++                    }
+                     Switch {id:pedalContext; text:"踏板保持"; checked:true; enabled:advancedNative; onToggled:optionsChanged()}
+                     RowLayout {
+                         width:parent.width
+@@ -1064,7 +1227,7 @@ MuseScore {
+                 PanelCard {
+                     width:root.expanded ? (panel.width-10)/2 : panel.width
+                     visible:settingsExpanded
+-                    ConfigurationEditor {width:parent.width; configuration:root.configuration; onModified:{root.configuration=configuration; optionsChanged(false)}}
++                    ConfigurationEditor {width:parent.width; configuration:root.configuration; onModified:{root.configuration=configuration; rebuildRegions();analyze();optionsChanged(false)}}
+                     RowLayout {
+                         width:parent.width
+                         Button {text:"导入配置"; Layout.fillWidth:true; enabled:advancedNative; onClicked:chooseFile("import-config")}
+@@ -1072,6 +1235,14 @@ MuseScore {
+                     }
+                     UiLabel {width:parent.width; text:"设置自动保存，下次启动自动读取。"; color:muted; font.pixelSize:10; wrapMode:Text.Wrap}
+                 }
++                PanelCard {
++                    width:root.expanded ? (panel.width-10)/2 : panel.width
++                    visible:settingsExpanded && advancedNative
++                    RangeEditor {width:parent.width;region:root.ownedRegion;regions:root.analysisRegions.filter(function(n){return n.part===root.focusedPart})
++                        tick:Math.max(0,root.currentTick);scoreEnd:root.analysisEnd;canUndo:root.editUndo.length>0;canRedo:root.editRedo.length>0
++                        roots:Harmony.rootNames;rootPcs:Harmony.rootPcs;qualities:root.qualityNames;onAction:root.editRange(command,start,end,rootIndex,qualityIndex,bassIndex)}
++                    Button {text:"复核完成：应用原人工范围";visible:root.manualNeedsReview;onClicked:root.editRange("review",0,0,0,0)}
++                }
+                 PanelCard {
+                     width:root.expanded ? (panel.width-10)/2 : panel.width
+                     visible:settingsExpanded
+@@ -1081,7 +1252,7 @@ MuseScore {
+                         Button {text:"导出 JSON"; enabled:advancedNative; onClicked:prepareExport("json")}
+                         Button {text:"导出 CSV"; enabled:advancedNative; onClicked:prepareExport("csv")}
+                         Button {text:"导入 JSON"; enabled:advancedNative; onClicked:chooseFile("import-analysis")}
+-                        Button {text:"重新检测"; enabled:advancedNative; onClicked:{importedRecords=[]; optionsChanged()}}
++                        Button {text:"重新检测"; enabled:advancedNative; onClicked:{importedRecords=[];importedRegions=[]; optionsChanged()}}
+                     }
+                     UiLabel {width:parent.width; text:analysisTimer.running?"正在分批分析…":analysisRecords.length+" 个时间切片"+(importedRecords.length?" · 使用导入分析":""); color:muted; font.pixelSize:11; wrapMode:Text.Wrap}
+                 }
+@@ -1101,12 +1272,12 @@ MuseScore {
+                     anchors.fill:parent; spacing:16
+                     Column {
+                         Layout.preferredWidth:ribbonTones.visible ? 244 : ribbonGroup.width; Layout.alignment:Qt.AlignVCenter; spacing:2
+-                        StableLabel {text:chordText; color:chordInk; horizontalAlignment:ribbonTones.visible ? Text.AlignLeft : Text.AlignHCenter; font.pixelSize:Math.min(32,Math.max(18,root.height*.22)); font.bold:true}
+-                        StableLabel {text:degreeText+" · "+positionText; color:muted; horizontalAlignment:ribbonTones.visible ? Text.AlignLeft : Text.AlignHCenter; font.pixelSize:11}
++                        StableLabel {text:root.summaryChordText; color:root.summaryInk; horizontalAlignment:ribbonTones.visible ? Text.AlignLeft : Text.AlignHCenter; font.pixelSize:Math.min(32,Math.max(18,root.height*.22)); font.bold:true}
++                        StableLabel {text:root.summaryDegreeText+" · "+positionText; color:muted; horizontalAlignment:ribbonTones.visible ? Text.AlignLeft : Text.AlignHCenter; font.pixelSize:11}
+                     }
+                     Flow {
+                         id:ribbonTones; visible:ribbonGroup.width>=540; Layout.fillWidth:true; Layout.alignment:Qt.AlignVCenter; spacing:6
+-                        Repeater {model:root.toneRows; delegate:Rectangle {
++                        Repeater {model:root.summaryToneRows; delegate:Rectangle {
+                             width:42; height:30; color:"#ffffff"; radius:4
+                             Rectangle {x:0;y:8;width:3;height:14;color:modelData.present?modelData.color:"#d0d0d0"}
+                             UiLabel {anchors.centerIn:parent; text:modelData.label; color:modelData.present?ink:muted; font.pixelSize:12}
+diff --git a/share/plugins/HarmonyAssistant/Preferences.js b/share/plugins/HarmonyAssistant/Preferences.js
+index 457ef6d0a..8e3736521 100644
+--- a/share/plugins/HarmonyAssistant/Preferences.js
++++ b/share/plugins/HarmonyAssistant/Preferences.js
+@@ -18,15 +18,17 @@ function defaults() {
+         root:0,quality:0,keyboard:false,settings:false,
+         ribbonAlign:1,ribbonPosition:50,chordContent:2,chordOrder:0,chordFont:0,chordScale:100,
+         chordColor:"#343a3f",highlightColor:"#0043ce",highlightBackground:"#d0e2ff",
+-        chromaticAccent:true,chromaticColor:"#a2191f",respectExistingHarmony:true,chordMask:true,dualPanel:true};
++        chromaticAccent:true,chromaticColor:"#a2191f",respectExistingHarmony:true,chordMask:true,dualPanel:true,
++        pedalMode:0,summaryMode:1,detailMode:0,repeatBars:false,degreeFont:"Arial"};
+ }
+ function clean(source) {
+     if(!source || source.schema!==1) throw Error("配置版本应为 1");
+-    var out=defaults(), booleans=["auto","follow","coloring","allColor","chordLabels","noteFunctions","pedal","manualKey","keyboard","settings","chromaticAccent","respectExistingHarmony","chordMask","dualPanel"];
++    var out=defaults(), booleans=["auto","follow","coloring","allColor","chordLabels","noteFunctions","pedal","manualKey","keyboard","settings","chromaticAccent","respectExistingHarmony","chordMask","dualPanel","repeatBars"];
+     for(var i=0;i<booleans.length;++i) if(typeof source[booleans[i]]==="boolean") out[booleans[i]]=source[booleans[i]];
+-    var limits={window:4,scope:1,keyMode:1,keyTonic:16,root:16,quality:28,ribbonAlign:3,ribbonPosition:100,chordContent:2,chordOrder:3,chordFont:2};
++    var limits={window:4,scope:1,keyMode:1,keyTonic:16,root:16,quality:28,ribbonAlign:3,ribbonPosition:100,chordContent:2,chordOrder:3,chordFont:2,pedalMode:1,summaryMode:1,detailMode:1};
+     for(var key in limits) if(typeof source[key]==="number" && source[key]===Math.floor(source[key]) && source[key]>=0 && source[key]<=limits[key])out[key]=source[key];
+     if(palettes[source.palette])out.palette=source.palette;
++    if(typeof source.degreeFont==="string" && source.degreeFont.length>0 && source.degreeFont.length<=64)out.degreeFont=source.degreeFont;
+     if(typeof source.chordScale==="number" && Math.floor(source.chordScale)===source.chordScale && source.chordScale>=60 && source.chordScale<=200)out.chordScale=source.chordScale;
+     var styleColors=["chordColor","highlightColor","highlightBackground","chromaticColor"];
+     for(i=0;i<styleColors.length;++i){var k=styleColors[i];if(source[k]!==undefined){
+diff --git a/share/plugins/HarmonyAssistant/README.md b/share/plugins/HarmonyAssistant/README.md
+index 1b6ccb061..7a3afcc48 100644
+--- a/share/plugins/HarmonyAssistant/README.md
++++ b/share/plugins/HarmonyAssistant/README.md
+@@ -1,16 +1,28 @@
+-# 和声助手 1.3.0
++# 和声助手 1.4.0
+ 
+-MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本 `0.5.0` 使用；音乐规则与界面仍在插件，主程序只提供通用数值快照、屏幕预览、停靠状态和文件读写接口。
++MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本 `0.8.0` 使用；音乐规则与界面仍在插件，主程序只提供通用数值快照、屏幕预览、停靠状态和文件读写接口。
+ 
+ ## 开始使用
+ 
+-本机新程序：`E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_harmony_1_3_x64\bin\MuseScore3Evo.exe`。
++本机新程序：`E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_harmony_1_4_x64\bin\MuseScore3Evo.exe`。
+ 
+-插件已放入新程序的 `plugins/HarmonyAssistant/`，并同步到你原先已启用的个人插件目录；旧文件逐个备份为 `.pre-1.3.0.bak`。启动新程序，在「插件 → 插件管理器」勾选 `HarmonyAssistant_MS3.qml`，然后运行「插件 → Harmony Assistant」。选择钢琴谱上的音符即可；普通空格播放自动跟随。请使用上面的新程序路径，旧程序和旧安装目录均保留。
++插件已放入新程序的 `plugins/HarmonyAssistant/`，并同步到你原先已启用的个人插件目录；旧文件逐个备份为 `.pre-1.4.0.bak`。启动新程序，在「插件 → 插件管理器」勾选 `HarmonyAssistant_MS3.qml`，然后运行「插件 → Harmony Assistant」。选择钢琴谱上的音符即可；普通空格播放自动跟随。请使用上面的新程序路径，旧程序和旧安装目录均保留。
+ 
+-单独安装插件时，将本目录的运行文件一起复制：`HarmonyAssistant_MS3.qml`、`Harmony.js`、`Preferences.js`、`Analysis.js`、`ConfigurationEditor.qml`、`SettingsStore.qml`、`PanelCard.qml`、`UiLabel.qml`、`StableLabel.qml`、`ColorOption.qml`、`AppearanceEditor.qml`。标准 MuseScore 3 仍可使用原有选区分析与颜色恢复；新增全谱图层、踏板上下文及分析交换需要新主程序。只勾选主入口，不勾选组件或 tests 下的测试插件。
++单独安装插件时，将本目录的运行文件一起复制：`HarmonyAssistant_MS3.qml`、`Harmony.js`、`Preferences.js`、`Analysis.js`、`ConfigurationEditor.qml`、`SettingsStore.qml`、`PanelCard.qml`、`UiLabel.qml`、`StableLabel.qml`、`ColorOption.qml`、`AppearanceEditor.qml`、`Timeline.js`、`RangeEditor.qml`。标准 MuseScore 3 仍可使用原有选区分析与颜色恢复；新增全谱图层、踏板上下文及分析交换需要新主程序。只勾选主入口，不勾选组件或 tests 下的测试插件。
+ 
+-## 1.3 记号优先级与双面板
++## 1.4 区间识别、人工修正与原生字体
++
++- 设置 →「踏板内识别」选择「一个和弦」或「允许多个」。默认综合整个踏板区间的持续时长与音高证据，只生成一个识别结果；跨小节、延音链不单独产生变化点。多和弦模式仍允许同一踏板内换和声，但降低踏板残留与旧延长音的影响，优先考虑新伴奏与当前实际低音。级数按和弦根音计算，转位低音写在斜线后，不将低音当成新的级数根音。
++- 全谱结果是按乐器保存的半开区间 `[start,end)`。相邻相同根音、类型、低音和调性合并；默认关闭小节重复记号，可单独开启。「顶部摘要结果」与「详细面板结果」各自选择实时或所属和弦，功能音和离调色也分别遵循所选结果。实时瞬间与区间综合结果允许不同。
++- 谱面固定记号保持变化 tick 的 x；拥挤时将冲突记号放到更高的行，其他记号保持共同基线。最多六行，页外或原谱文字占满时显示省略数量提示；避免无限上移。单击或双击可聚焦面板，停止时记号也保持当前高亮。
++- 设置 →「和声范围编辑」提供可拖动的左右范围手柄、起止 tick 精确输入、指定根音/类型/低音、拆分、合并、排除范围、恢复自动以及独立撤销/重做。手柄吸附到 60 tick（四分音符的八分之一）。选中记号再修正；在没有自动结果的位置也能指定新范围。范围操作只修改分析，不修改音符或占用谱面的撤销记录。
++- 人工修正按谱面内容指纹原子保存，下次加载自动读取。编辑谱面导致指纹变化后，旧修正暂停应用并提供复核按钮，不静默套用错位范围。JSON 分析升级为 schema 2，包含区间和人工修正；仍接受 schema 1。CSV 导出区间起止、乐器、根音、低音和来源。
++- 和弦使用原生 `Harmony` 的字形排版，在独立样式副本中生成缓存图片，默认遵循当前谱的和弦字体/后缀规则与字号。Edwin/Arial 覆盖仍可选，级数字体另设；缺字或字体回退会提示。样式变化使缓存失效，原谱的和弦列表、布局与保存内容不被预览改动。
++- 临时着色现在通过原生 `Element::curColor` 保留选中、播放、拖放和隐藏状态的优先级；取消预览恢复原色。P 键盘与选区框宽度保持原实现，加入对照回归。
++
++`Timeline.js` 负责分批区间构建与人工覆盖，`RangeEditor.qml` 负责范围交互。音乐规则仍在插件；软件本体仅补充延音攻击起点、当前踏板元数据、字形预览与鼠标命中。原生实现不会进入音频回调。复杂复调或一个踏板内实际多个和弦应选择多和弦模式或人工修正；识别不等于唯一的功能和声解释。
++
++## 历史 1.3 记号优先级与双面板
+ 
+ - 默认「优先保留原谱和弦 / 级数」：同一节拍、同一乐器已有普通或 Nashville 和弦时，隐藏重复的分析和弦；原谱 Roman 级数则隐藏重复级数。另一项仍可补充显示，面板始终保留完整分析。关闭此选项可同时显示。
+ - 当前功能名避开已缓存的固定和弦框，并复用全谱标签的位置。原生文字编辑或拖动过程中，临时标签让出编辑对象附近区域，双击也交还原生编辑；结束编辑后恢复。选择/播放时固定记号保持原位，只更新高亮。
+@@ -22,7 +34,7 @@ MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本
+ 
+ 这些新增原生能力需要个人主程序 0.5.0。硬件音频与长时间会话仍需实际使用验收；索引耗时不等于屏幕重绘或硬实时音频性能。
+ 
+-## 1.2 显示与交互
++## 历史 1.2 显示与交互
+ 
+ - 顶部横条默认居中，可在右侧直接切换左 / 中 / 右；设置中的「横条位置」还支持 0–100% 自定义位置，并给右侧按钮留出空间。位置自动保存。横条的详细面板和悬浮功能保留。
+ - 「谱面外观与位置」选择和弦 / 级数 / 两者，以及和弦在左、级数在左、和弦在上、级数在上。可设置字号 60–200%、正常文字色、当前高亮文字和背景色。
+@@ -36,7 +48,7 @@ MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本
+ 
+ 以上固定记号、高亮索引和双击需要主程序 0.4.0；旧主程序保留兼容路径。
+ 
+-## 1.1 新功能
++## 历史 1.1 新功能
+ 
+ - 修复点击「插件」菜单时的主程序终止：析构清理仅比较 Element 地址，禁止调用已经析构的派生类型虚函数。另修复插件目录被重复递归扫描的问题。
+ - 顶部/底部停靠自动收为横条，优先显示当前和弦、级数和功能音；点击「详细面板」打开独立工具窗口。侧栏可滚动，宽窗口双列显示。标题栏可拖动/双击悬浮，面板内也提供悬浮/停靠按钮。
+@@ -79,13 +91,13 @@ MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本
+ 
+ ## 维护边界
+ 
+-- `Harmony.js`：ES5 音乐逻辑，不依赖 Qt/MuseScore 对象。
++- `Harmony.js`：ES5 音乐逻辑，不依赖 Qt/MuseScore 对象；`Timeline.js`：加权区间构建、合并及人工覆盖；`RangeEditor.qml`：范围编辑交互。
+ - `Preferences.js`：版本化配置、输入校验和配色预设；`Analysis.js`：分析交换格式、校验、CSV 和二分定位。
+ - 主 QML：选区、调性、显示状态与宿主适配；`ConfigurationEditor.qml`、`SettingsStore.qml`、`PanelCard.qml`、`UiLabel.qml`、`StableLabel.qml` 负责配置与稳定排版；`AppearanceEditor.qml`、`ColorOption.qml` 负责样式与选色。
+ - 主程序 `ScoreObserver`：GUI 线程真实位置、数值快照、按内容版本失效的声部索引。
+ - `NotePreviewLayers`：视图内独立颜色层；模型、音频回调、文件格式不承担和弦功能。
+ 
+-本目录是插件编辑源。发布时将上述十一个运行文件及本 README 同步到主仓库 `share/plugins/HarmonyAssistant/`，现有递归安装规则会打包它们。原稿、1.0 备份与旧 ZIP 均保留。native 下的迁移脚本只记录一次性的开发过程，不能重复运行；供其他机器应用的最终修改见版本化 patch。主程序架构/API/合并点详见其 `personal/docs/10-score-observer.md`。
++本目录是插件编辑源。发布时将上述十三个运行文件及本 README 同步到主仓库 `share/plugins/HarmonyAssistant/`，现有递归安装规则会打包它们。原稿、1.0 备份与旧 ZIP 均保留。native 下的迁移脚本只记录一次性的开发过程，不能重复运行；供其他机器应用的最终修改见版本化 patch。主程序架构/API/合并点详见其 `personal/docs/10-score-observer.md`。
+ 
+ ## 验证与性能
+ 
+@@ -94,14 +106,17 @@ MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本
+ ```powershell
+ node HarmonyAssistant/test-harmony.cjs
+ node HarmonyAssistant/tests/test-exchange.cjs
++node HarmonyAssistant/tests/test-timeline.cjs
+ python HarmonyAssistant/tests/render_and_check.py
+ python HarmonyAssistant/tests/test_modern_panel.py
+ python HarmonyAssistant/tests/test_fixed_panel.py
+ python HarmonyAssistant/tests/test_dual_panel.py
++python HarmonyAssistant/tests/test_regions_panel.py
++python HarmonyAssistant/tests/test_range_drag.py
+ python HarmonyAssistant/tests/run_native_smoke.py <新程序exe> <独立测试目录>
+ ```
+ 
+-前两项验证和弦逻辑、配置和分析交换；两项 Python 面板测试用 Qt 5 验证持续音、颜色恢复、撤销、模拟播放、隐藏恢复、全谱图层及 280/360/460 px 排版。最后一项用真实 Release 程序、独立设置和测试谱验证原生接口、Cmaj13、原色不变、配置与缓存。可加第三个参数指定安装目录里的主 QML，验证发布副本。
++前两项验证和弦逻辑、配置和分析交换；Python 面板测试用 Qt 5 验证持续音、颜色恢复、撤销、模拟播放、隐藏恢复、全谱图层及 280/360/460 px 排版。最后一项用真实 Release 程序、独立设置和测试谱验证原生接口、Cmaj13、原色不变、配置与缓存。可加第三个参数指定安装目录里的主 QML，验证发布副本。
+ 
+ 1.2 Release 验证：`tst_scoreobserver` 13 项、既有 `tst_note` 11 项、真实 Widgets/QML 宿主 `tst_pluginhost` 3 项全部通过，无失败或跳过。实际宿主测试覆盖原崩溃的缩略谱重排路径、四次菜单打开、插件加载、顶部横条、悬浮双列、重新停靠与关闭重开；QML 原生窗口截图经过检查。颜色和文字的屏幕绘制差异、MSCX 保存字节一致、撤销失效和图层隔离均有回归检查。
+ 
+@@ -114,3 +129,7 @@ Windows 真实 GUI 测试需完整安装资源和 Qt 运行时，使用 `tests/r
+ 1.2 真实安装宿主在同一隔离设置目录连续启动两次，验证仅级数、上下顺序、140% 字号、颜色、横条右对齐和功能名能自动恢复。Windows 部署补齐同 SDK 的 Qt5QmlModels.dll / Qt5QmlWorkerScript.dll；旧安装保留。
+ 
+ 1.3 Release 验证：tst_scoreobserver 14、tst_note 11、实际 tst_pluginhost 5 项通过，无失败/跳过；固定布局、配置/交换与双面板 Qt 测试通过。新增用例验证同一持续音两个变化的实际 x 坐标、原谱和弦/Roman 优先级、遮罩开关、移动标签与原生文字光标避让、双面板共用一个观察器和配置控件、关闭重开/悬浮返回。实际安装连续启动两次，新增三个开关与既有样式均恢复。日志及硬件/长会话限制见个人 CHANGELOG 0.5.0。
++
++1.4 验证：原生观察器 16 项、实际 Widgets/QML 宿主 10 项通过。新增持续踏板跨小节、低音转位、新伴奏优先、人工覆盖/抑制/恢复、范围拖动吸附与绑定恢复、摘要/详情独立结果、专用字形及选中/播放/拖放/P 键盘/选区框对照。1000 小节/6000 音符实测：索引 26.47 ms、1000 缓存快照 1.95 ms、上下文 6.46 ms、数值帧 24.04 ms、基础色层定位 21.66 ms；1000 次标记高亮索引变化 0.703 ms，不含绘制。离线 JS 10000 切片约 1.9 秒，生产版本用 32 步/约 6 ms 预算分批构建，首次全谱分析仍有成本。历史数字与说明保留用于追溯；以当前版本说明为准。
++
++最终安装程序连续启动两次通过，样式及 `Am/C` 人工区间均从隔离设置自动恢复；原有音符 suite 11 项通过。导入先校验全部区间再写状态，坏数据不会改动已有人工修正。
+diff --git a/share/plugins/HarmonyAssistant/RangeEditor.qml b/share/plugins/HarmonyAssistant/RangeEditor.qml
+new file mode 100644
+index 000000000..68e2f0c43
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/RangeEditor.qml
+@@ -0,0 +1,76 @@
++import QtQuick 2.9
++import QtQuick.Controls 2.2
++import QtQuick.Layouts 1.3
++
++Column {
++    id:editor
++    objectName:"harmonyRangeEditor"
++    property var region:null
++    property var regions:[]
++    property int tick:0
++    property int scoreEnd:2147483647
++    property bool canUndo:false
++    property bool canRedo:false
++    property var qualities:[]
++    property var roots:[]
++    property var rootPcs:[]
++    signal action(string command,int start,int end,int rootIndex,int qualityIndex,int bassIndex)
++    onRegionChanged:if(region){root.currentIndex=Math.max(0,editor.rootPcs.indexOf(region.root));quality.currentIndex=Math.max(0,region.definition)}
++    spacing:8
++    UiLabel {text:"和声范围编辑";font.bold:true;color:"#343a3f";font.pixelSize:13}
++    UiLabel {width:parent.width;text:region ? region.chord+" · ticks "+region.start+"–"+region.end : "选择一个记号或谱面位置";wrapMode:Text.Wrap;color:"#697077";font.pixelSize:11}
++    Switch {id:editing;objectName:"harmonyRangeEditing";text:"显示可拖动的范围手柄"}
++    Rectangle {
++        id:strip;width:parent.width;height:70;visible:editing.checked;color:"#eef1f4";radius:4
++        property int leftTick:region?Math.max(0,region.start-480):Math.max(0,tick-480)
++        property int rightTick:region?Math.min(scoreEnd,region.end+480):Math.min(scoreEnd,tick+1920)
++        function xFor(value){return 12+(width-24)*(value-leftTick)/Math.max(1,rightTick-leftTick)}
++        function tickFor(x){return Math.max(0,Math.min(scoreEnd,Math.round((leftTick+(x-12)/(width-24)*(rightTick-leftTick))/60)*60))}
++        Repeater {
++            model:editing.checked ? editor.regions.filter(function(n){return n.end>strip.leftTick && n.start<strip.rightTick}).slice(0,128) : []
++            Rectangle {visible:modelData.end>strip.leftTick && modelData.start<strip.rightTick
++                x:strip.xFor(Math.max(modelData.start,strip.leftTick));y:20;height:30
++                width:Math.max(1,strip.xFor(Math.min(modelData.end,strip.rightTick))-x-2)
++                color:editor.region && modelData.id===editor.region.id?"#d0e2ff":"#dce3e8"
++                UiLabel {anchors.centerIn:parent;width:parent.width-4;text:modelData.chord;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;color:"#253342";font.pixelSize:11}
++                MouseArea {anchors.fill:parent;onClicked:editor.action("select",modelData.start,modelData.end,0,0,0)}
++            }
++        }
++        Repeater {
++            model:editor.region?2:0
++            Rectangle {id:handle;width:12;height:48;y:10;radius:3;color:"#0043ce"
++                objectName:index===0?"harmonyRangeStart":"harmonyRangeEnd"
++                x:strip.xFor(index===0?editor.region.start:editor.region.end)-width/2
++                MouseArea {anchors.fill:parent;drag.target:handle;drag.axis:Drag.XAxis;drag.minimumX:0;drag.maximumX:strip.width-handle.width
++                    onReleased:{var value=strip.tickFor(handle.x+handle.width/2);editor.action("range",index===0?value:editor.region.start,index===0?editor.region.end:value,0,0,0)}}
++            }
++        }
++    }
++    RowLayout {width:parent.width
++        UiLabel {text:"起点 tick";font.pixelSize:11;color:"#697077"}
++        SpinBox {id:start;Layout.fillWidth:true;from:0;to:Math.max(0,editor.scoreEnd-1);value:editor.region?editor.region.start:Math.max(0,editor.tick);stepSize:60;editable:true}
++    }
++    RowLayout {width:parent.width
++        UiLabel {text:"终点 tick";font.pixelSize:11;color:"#697077"}
++        SpinBox {id:end;Layout.fillWidth:true;from:1;to:editor.scoreEnd;value:editor.region?editor.region.end:Math.min(editor.scoreEnd,Math.max(0,editor.tick)+480);stepSize:60;editable:true}
++    }
++    RowLayout {width:parent.width
++        ComboBox {id:root;model:editor.roots;Layout.preferredWidth:70}
++        ComboBox {id:quality;model:editor.qualities;Layout.fillWidth:true}
++    }
++    RowLayout {width:parent.width
++        UiLabel {text:"低音";color:"#697077";font.pixelSize:11}
++        ComboBox {id:bass;model:["实际低音"].concat(editor.roots);Layout.fillWidth:true}
++    }
++    Flow {width:parent.width;spacing:5
++        Button {text:"应用范围";enabled:!!editor.region;onClicked:editor.action("range",start.value,end.value,root.currentIndex,quality.currentIndex,0)}
++        Button {text:"指定和弦";onClicked:editor.action("assign",start.value,end.value,root.currentIndex,quality.currentIndex,bass.currentIndex)}
++        Button {text:"在当前位置拆分";enabled:!!editor.region && editor.tick>editor.region.start && editor.tick<editor.region.end;onClicked:editor.action("split",editor.tick,end.value,0,0,0)}
++        Button {text:"合并前一段";enabled:!!editor.region;onClicked:editor.action("merge",start.value,end.value,0,0,0)}
++        Button {text:"排除此范围";onClicked:editor.action("suppress",start.value,end.value,0,0,0)}
++        Button {text:"恢复自动";onClicked:editor.action("restore",start.value,end.value,0,0,0)}
++        Button {text:"撤销修正";enabled:editor.canUndo;onClicked:editor.action("undo",0,0,0,0,0)}
++        Button {text:"重做修正";enabled:editor.canRedo;onClicked:editor.action("redo",0,0,0,0,0)}
++    }
++    UiLabel {width:parent.width;text:"手柄吸附至 1/8 拍；数值输入可精确到 tick。只改分析范围，原谱音符和原生撤销不变。删除识别边界请用合并。";wrapMode:Text.Wrap;color:"#697077";font.pixelSize:10}
++}
+diff --git a/share/plugins/HarmonyAssistant/Timeline.js b/share/plugins/HarmonyAssistant/Timeline.js
+new file mode 100644
+index 000000000..9f7f1986f
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/Timeline.js
+@@ -0,0 +1,192 @@
++.pragma library
++.import "Harmony.js" as Harmony
++
++// Numeric, half-open harmonic regions. No native object is retained here.
++function clone(value) { return JSON.parse(JSON.stringify(value)); }
++function atTick(regions, tick, part) {
++    var lo=0,hi=regions.length;
++    while(lo<hi){var mid=(lo+hi)>>1;if(regions[mid].start<=tick)lo=mid+1;else hi=mid;}
++    for(var i=lo-1;i>=0;--i) {
++        if(regions[i].part===part && tick<regions[i].end)return regions[i];
++        if(regions[i].part===part)break;
++    }
++    return null;
++}
++function bass(notes, tick) {
++    var sounding=notes.filter(function(n){return n.end===undefined || n.end>tick;});
++    // Expired pedal residue cannot outrank an actually held bass.
++    var pool=sounding.length?sounding:notes;
++    return pool.length?pool.reduce(function(a,b){return a.pitch<=b.pitch?a:b;}):null;
++}
++function describe(result, notes, tick, tonic, minor) {
++    var out=clone(result), b=bass(notes,tick), flats=[1,3,5,8,10].indexOf(tonic)>=0;
++    out.bass=b?Harmony.mod12(b.pitch):-1;out.bassTpc=b?b.tpc:-1;
++    out.chord="";out.degree="";out.tonic=tonic;out.minor=minor;
++    if(out.root>=0) {
++        var rootNote=null;
++        for(var i=0;i<notes.length;++i)if(Harmony.mod12(notes[i].pitch)===out.root){rootNote=notes[i];break;}
++        out.chord=(rootNote?Harmony.spelledName(rootNote.tpc,rootNote.pitch,flats):Harmony.pcName(out.root,flats))+Harmony.defs[out.definition].suffix;
++        if(b && out.bass!==out.root)out.chord+="/"+Harmony.spelledName(b.tpc,b.pitch,flats);
++        out.degree=Harmony.roman(tonic,minor,out.root,out.definition);
++    }
++    out.chromatic=Harmony.isChromatic(tonic,minor,out.root,out.definition);
++    return out;
++}
++function signature(r) {return [r.root,r.definition,r.bass,r.tonic,r.minor].join(":");}
++function partsFor(frame, fallback) {return frame.parts && frame.parts.length?frame.parts:[{startTrack:fallback,endTrack:1024}];}
++function tonicAt(frame, config) {
++    if(config.manualKey)return Harmony.rootPcs[config.keyTonic];
++    var major=[11,6,1,8,3,10,5,0,7,2,9,4,11,6,1];
++    return Harmony.mod12(major[(frame.keySignature||0)+7]+(config.keyMode===1?9:0));
++}
++function pedalAt(frame, part) {
++    var windows=frame.pedalWindows||[];
++    for(var i=0;i<windows.length;++i)if(windows[i].firstTrack===part && windows[i].start<=frame.tick && frame.tick<windows[i].end)return windows[i];
++    return null;
++}
++function createBuilder(frames, config, fallbackPart) {
++    return {frames:frames,config:clone(config),fallbackPart:fallbackPart,byPart:{},keys:[],
++        evidence:{},pedalResults:{},regions:[],phase:0,frameIndex:0,partIndex:0,rowIndex:0,previous:null,current:null};
++}
++function ingest(state, frame, end) {
++    var parts=partsFor(frame,state.fallbackPart);
++    if(end<=frame.tick)return;
++    for(var p=0;p<parts.length;++p) {
++        var part=parts[p].startTrack,notes=frame.notes.filter(function(n){return n.track>=part && n.track<parts[p].endTrack;});
++        var rows=state.byPart[part]||(state.byPart[part]=[]),window=state.config.pedal?pedalAt(frame,part):null;
++        rows.push({frame:frame,notes:notes,start:frame.tick,end:end,pedal:window});
++        if(window && state.config.pedalMode===0) {
++            var key=part+":"+window.start+":"+window.end;
++            var evidence=state.evidence[key]||(state.evidence[key]={weights:{},all:[],seen:{},representative:[]});
++            var width=Math.max(1,Math.min(end,window.end)-Math.max(frame.tick,window.start));
++            for(var n=0;n<notes.length;++n) {
++                var note=notes[n],pc=Harmony.mod12(note.pitch),held=note.end===undefined||note.end>frame.tick;
++                evidence.weights[pc]=(evidence.weights[pc]||0)+width*(held?1:.18);
++                var noteKey=note.track+":"+(note.attackTick===undefined?note.tick:note.attackTick)+":"+note.pitch;
++                if(!evidence.seen[noteKey]){evidence.seen[noteKey]=true;evidence.all.push(note);}
++            }
++            if(!evidence.representative.length && notes.length>=3)evidence.representative=notes;
++        }
++    }
++}
++function evaluate(state, row, key) {
++    var config=state.config,tonic=tonicAt(row.frame,config),window=row.pedal,result;
++    var pedalKey=window?key+":"+window.start+":"+window.end:"";
++    if(config.auto===false)result={root:Harmony.rootPcs[config.root],definition:config.quality,kind:"手动指定"};
++    else if(window && config.pedalMode===0) {
++        if(!state.pedalResults[pedalKey]) {
++            var evidence=state.evidence[pedalKey];
++            result=Harmony.detectWeighted(evidence.all,evidence.weights,null,tonic,config.keyMode===1,row.start);
++            state.pedalResults[pedalKey]=describe(result,evidence.representative.length?evidence.representative:evidence.all,row.start,tonic,config.keyMode===1);
++            state.pedalResults[pedalKey].kind="踏板区间 · "+(result.kind||"综合识别");
++        }
++        result=state.pedalResults[pedalKey];
++    } else {
++        var weights={},heldNotes=row.notes.filter(function(n){return n.end===undefined||n.end>row.start;});
++        var attacks=heldNotes.filter(function(n){return (n.attackTick===undefined?n.tick:n.attackTick)===row.start;});
++        var freshBass=attacks.length?bass(attacks,row.start):null;
++        var heldBass=bass(heldNotes,row.start);
++        // Upper extensions alone must not demote a held accompaniment and invent a new root.
++        var bassAttack=freshBass && (!heldBass || freshBass.pitch<=heldBass.pitch+12);
++        var strongAttack=bassAttack && (attacks.length>=3 || heldNotes.some(function(n){return n.pitch>freshBass.pitch+12;}));
++        for(var n=0;n<row.notes.length;++n) {
++            var note=row.notes[n],pc=Harmony.mod12(note.pitch),active=note.end===undefined||note.end>row.start;
++            var oldAttack=(note.attackTick===undefined?note.tick:note.attackTick)<row.start;
++            var weight=active?(strongAttack && attacks.length>=3 && oldAttack?.3:1):(strongAttack?.12:.3);
++            weights[pc]=Math.max(weights[pc]||0,weight);
++        }
++        result=Harmony.detectWeighted(row.notes,weights,strongAttack?null:state.previous,tonic,config.keyMode===1,row.start);
++    }
++    if(result.chord===undefined)result=describe(result,row.notes,row.start,tonic,config.keyMode===1);
++    if(!row.notes.length){state.current=null;state.previous=null;return;}
++    if(row.frame.imported)result=describe(row.frame,row.notes,row.start,tonic,config.keyMode===1);
++    if(result.root<0){state.current=null;return;}
++    var current=state.current;
++    var same=current && current.end===row.start && signature(current)===signature(result);
++    if(window && config.pedalMode===0 && current && current.pedalStart===window.start)same=true;
++    if(same)current.end=row.end;
++    else {
++        current=clone(result);current.start=row.start;current.end=row.end;current.part=Number(key);
++        current.id=key+":"+row.start;current.source=row.frame.imported?"imported":"auto";
++        current.notes=clone(row.notes);current.bar=row.frame.bar;current.beat=row.frame.beat;
++        current.pedalStart=window?window.start:-1;state.regions.push(current);state.current=current;
++    }
++    state.previous=result;
++}
++function step(state, limit) {
++    for(var count=0;count<limit;++count) {
++        if(state.phase===0) {
++            if(state.frameIndex<state.frames.length) {
++                var i=state.frameIndex++,frame=state.frames[i];
++                ingest(state,frame,i+1<state.frames.length?state.frames[i+1].tick:(frame.scoreEnd||frame.tick+480));
++                continue;
++            }
++            for(var key in state.byPart)state.keys.push(key);
++            state.phase=1;
++        }
++        if(state.partIndex>=state.keys.length) {
++            state.regions.sort(function(a,b){return a.start-b.start||a.part-b.part;});state.phase=2;return true;
++        }
++        key=state.keys[state.partIndex];var rows=state.byPart[key];
++        if(state.rowIndex>=rows.length){state.partIndex++;state.rowIndex=0;state.previous=null;state.current=null;--count;continue;}
++        evaluate(state,rows[state.rowIndex++],key);
++    }
++    return state.phase===2;
++}
++function build(frames, config, fallbackPart, overrides) {
++    var state=createBuilder(frames,config,fallbackPart);
++    while(!step(state,128)){}
++    return overlay(state.regions,overrides||[]);
++}
++function overlay(regions, overrides) {
++    if(!overrides.length)return regions.slice();
++    var out=clone(regions);
++    for(var i=0;i<overrides.length;++i) {
++        var edit=overrides[i],next=[];
++        for(var j=0;j<out.length;++j) {
++            var region=out[j];
++            if(region.part!==edit.part || region.end<=edit.start || region.start>=edit.end){next.push(region);continue;}
++            if(region.start<edit.start){var left=clone(region);left.end=edit.start;next.push(left);}
++            if(region.end>edit.end){var right=clone(region);right.start=edit.end;right.id=right.part+":"+right.start;next.push(right);}
++        }
++        if(!edit.suppressed){var manual=clone(edit);manual.id=manual.part+":"+manual.start;manual.source=edit.source==="imported"?"imported":"manual";next.push(manual);}
++        out=next;
++    }
++    out.sort(function(a,b){return a.start-b.start||a.part-b.part;});return out;
++}
++function validEdits(edits) {
++    if(!Array.isArray(edits)||edits.length>10000)throw Error("人工区间数量无效");
++    return edits.map(function(edit){
++        if(!edit || !NumberIsInteger(edit.start,0,2147483646) || !NumberIsInteger(edit.end,edit.start+1,2147483647) ||
++           !NumberIsInteger(edit.part,0,1023) || !NumberIsInteger(edit.root,-1,11) || !NumberIsInteger(edit.definition,-1,28) ||
++           ((edit.root<0)!==(edit.definition<0)))throw Error("人工区间无效");
++        var out={start:edit.start,end:edit.end,part:edit.part,root:edit.root,definition:edit.definition,
++            suppressed:edit.suppressed===true,bass:NumberIsInteger(edit.bass,-1,11)?edit.bass:-1,
++            tonic:NumberIsInteger(edit.tonic,0,11)?edit.tonic:0,minor:edit.minor===true};
++        out.chord=typeof edit.chord==="string"?edit.chord.slice(0,64):"";
++        out.degree=typeof edit.degree==="string"?edit.degree.slice(0,24):"";
++        out.chromatic=Harmony.isChromatic(out.tonic,out.minor,out.root,out.definition);
++        if(edit.source==="imported")out.source="imported";
++        if(edit.notes!==undefined && (!Array.isArray(edit.notes)||edit.notes.length>512))throw Error("人工区间音符无效");
++        out.notes=(edit.notes||[]).map(function(n){
++            if(!n || !NumberIsInteger(n.tick,0,2147483647) || !NumberIsInteger(n.track,0,1023) || !NumberIsInteger(n.index,0,127) ||
++               !NumberIsInteger(n.pitch,0,127) || !NumberIsInteger(n.tpc,-1,33))throw Error("人工区间音符定位无效");
++            var note={tick:n.tick,track:n.track,index:n.index,pitch:n.pitch,tpc:n.tpc,writtenPitch:n.writtenPitch,writtenTpc:n.writtenTpc};
++            if(NumberIsInteger(n.end,n.tick,2147483647))note.end=n.end;
++            if(NumberIsInteger(n.attackTick,0,n.tick))note.attackTick=n.attackTick;
++            return note;
++        });
++        return out;
++    });
++}
++function restore(edits, start, end, part) {
++    var result=[];
++    for(var i=0;i<edits.length;++i) {
++        var edit=edits[i];
++        if(edit.part!==part || edit.end<=start || edit.start>=end){result.push(clone(edit));continue;}
++        if(edit.start<start){var left=clone(edit);left.end=start;result.push(left);}
++        if(edit.end>end){var right=clone(edit);right.start=end;result.push(right);}
++    }
++    return result;
++}
++function NumberIsInteger(value,min,max) {return typeof value==="number" && isFinite(value) && Math.floor(value)===value && value>=min && value<=max;}
+-- 
+2.34.1.windows.1
+

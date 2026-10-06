@@ -1,0 +1,170 @@
+# 个人版本更新日志
+
+个人版本记录本仓库的个人维护增量；应用上游版本另由 `config.cmake` 管理。历史源码提交尚未追溯归类，此处从首次建立指南开始记录，不代表此前没有个人改动。
+
+## 0.8.0 — 2026-10-06
+
+- 类型：和声助手 1.4.0 的区间识别/人工修正、专用字形与原生颜色保护；上游仍 3.7.0，保留 0.7.1 自动记谱与 0.6 音源改动。
+- 插件：Timeline.js 加权模板、单/多和弦踏板开关、低音/转位与攻击起点连续性、相邻区间合并；高声部扩展音不重设低音和声。摘要/详情各选实时或所属区间；手柄/精确 tick、指定/拆分/合并/抑制/恢复、独立 Undo/Redo。指纹绑定人工修正自动读写，谱面改变须复核；schema 2 分析交换兼容 schema 1，坏导入全量验证后才写盘。
+- 原生边界：仅 events.cpp、notepreview.h、scoreview.cpp、scoreobserver.h/.cpp 五处生产文件。补充攻击 tick、每乐器当前踏板元数据与二分索引；独立 MasterScore 样式副本/原生 Harmony/QPicture，加载尚未使用的 chord list，渲染内容哈希使样式变化失效。最多六条避让行保留 x，单击/双击激活；不创建保存谱面元素，不改音频回调。
+- 原功能：预览调用 Element::curColor 保持原生选中/播放/拖放/隐藏优先级，去除覆盖原生播放颜色的预览下划线；HPiano、原生 curColor 和选区框宽度均未改动。测试中逐像素对照并检验清理恢复。
+- 验证：tst_scoreobserver 16、实际 tst_pluginhost 10、tst_note 11 项全部通过，0 失败/跳过。插件逻辑/配置交换/区间、固定布局/双面板/人工历史/坏导入、真实手柄拖动吸附与绑定恢复通过。最终安装真实宿主连续启动两次，样式与 Am/C 人工区间自动恢复、谱面颜色不变。GUI 使用独立设置与测试进程，未控制用户已打开的谱面。
+- 性能：1000 小节/6000 音符：索引 26.468 ms、1000 快照 1.948 ms、1000 上下文 6.464 ms、数值分析帧 24.044 ms、基础色层几何 21.655 ms；1000 次标记索引高亮 0.703 ms，不含绘制。离线 Node 10000 切片约 1.9 秒，生产 QML 分批最多 32 步/约 6 ms 预算。首次建索引/全谱分析/字形避让仍有成本，无零开销或音频硬实时承诺。
+- 部署：x64 Release 链接/新目录 msvc.install_harmony_1_4_x64 安装通过；同 SDK Qt5QmlModels/WorkerScript 补齐。插件 14 个发布文件在工作区、share/plugins、新安装、已启用副本逐个核对；启用副本旧文件备份 .pre-1.4.0.bak，旧安装/音源/所有历史文件保留。
+- 维护：更新 personal/docs/10、04、README、source-map 与插件 README。音高/踏板不能唯一决定和声，复杂复调可人工修正；最多六行仍可能省略，提供计数。未做用户实谱、长期会话和真实音频/MIDI 硬件验收。
+- Git 父提交：abf9e3453621e4c09398472154f58ba10d9e4958。
+- Git 提交主题：feat(harmony): add editable harmonic regions and native symbol previews。
+- 提交定位：personal-v0.8.0 标签指向本次提交；普通 push 分支/标签，不强推。
+
+## 0.7.1 — 2026-10-06
+
+- 类型：自动时值开关的工作区恢复修复、节奏规范依据与字体回退调查；上游仍为 3.7.0，沿用现有文件/偏好格式。
+- 根因/修复：mscore/musescore.cpp 中 auto-rhythmic-input 未注册 Workspace action/string，且原 QMenu 持有动作。菜单恢复会漏掉动作并延迟销毁原菜单。改为主窗口持有并注册，在 updateMenus 补入旧工具菜单，setMenuTitles 同步语言切换；中文开关位于既有“重组旋律”后，不要求清空用户配置。
+- 规则核对：依据 Dorico 官方分组/强制时值示例、Open University 与 Puget Sound 教材，补充 6/8、9/8、12/8、等比例 6/4/6/16、3/4/3/8、2/2 的真实输入验证。既有算法已符合本次锁定例子，保留 durationtype.cpp 原实现，不新增全局拆分或机械中线规则。2/2 的半拍切分与 4/4 层级不同，明确避免套错规则。
+- 验证：tst_inputrhythm 41 项通过，0 失败/跳过，新增复合拍子跨大拍、休止、完整小节与连续输入保留原时值/光标；真实 tst_pluginhost 8 项通过，含恢复缺少开关的旧菜单、处理旧菜单延迟析构、中文显示、位置、唯一性、设置切换以及既有卷帘/和声 GUI 回归。测试在忽略构建树，设置隔离。
+- 字体：普通标题中日文缺字由 Qt 合并字体，和音乐符号指定 Bravura Text 回退不同。本机独立 Qt 5.15.2 探针在 Edwin/Times New Roman/Arial 示例中均回退到宋体，两种字体引擎的部分字形度量不同；尚未取得用户两个 exe、原字体与同一谱面，不将探针结果说成两个程序差异的已证根因。不更改全谱字体/引擎默认。
+- 材料：新增 personal/docs/13-rhythm-rules-and-font-fallback.md，记录来源、默认规则例子、菜单寿命与字体诊断路径；同步 01/04/12/README/source-map。Behind Bars 可访问目录/试读没有完整节拍章节，未声称已实现整本书细则。
+- 部署：x64 Release 编译/安装通过，独立 msvc.install_personal_0_7_1_x64；--long-version 在隔离配置下返回 0，安装 exe 与最终构建 SHA256 相同。保留全部旧安装与音源；复用原构建树/缓存安装前缀，安装时指定独立 --prefix。
+- 边界：尚未重现用户具体“跨中线停止”操作；本次连续输入测试保持总时值，没有以通过案例替代用户实谱验收。不规则/加法拍号、弱起、局部 hemiola 与全部出版风格仍未完整审计；复杂对象保守跳过机制不变。
+- Git 父提交：92bd6a890d6d796c8f6d6644ea91cec00dadc540。
+- Git 提交主题：fix(notation): retain automatic rhythm action across workspace restore。
+- 提交定位：personal-v0.7.1 标签指向本次提交；核对远端后普通 push，不强推。
+
+## 0.7.0 — 2026-10-06
+
+- 类型：自动规范输入时值。应用工具菜单在重组节奏旁提供默认开启的持久化开关，关闭不改已有延音；上游应用仍 3.7.0，谱面格式不变。
+- 核心：新增 libmscore/inputrhythm.h/.cpp，复用 toRhythmicDurationList / regroupNotesAndRests。五线谱新输入、时值按钮/增减/输入状态、卷帘确认新增和时值调整接入；保持常规切分例外、全音符、整小节休止、复合拍子及跨小节延音。
+- 保护：比较分组后才重建；只整理目标 track 的完整延音链，数值 tick/track/pitch 恢复选区、输入光标和卷帘对象，与原编辑共用 Undo。追加和弦音覆盖所有链片段。复杂附着、自定义演奏事件、连音符、装饰音、震音等保守跳过；打开/导入/普通粘贴/纯移调/插件游标不触发整理。
+- 既有算法局部修复：edit.cpp 外部反向延音连接实际插入和弦，释放临时 clone；输入位置按数值恢复，避免失效 Segment。
+- 输入状态时值变更在拆分后定位逻辑终点再前进，避免只前进第一段；应用偏好键局限在 mscore/inputrhythmpreference.h，不增加核心谱面字段。
+- 验证：x64 Release 主程序构建/链接/独立安装；tst_inputrhythm 24、手动 tst_rhythmicGrouping 10、tst_note 11、tst_scoreobserver 14、真实 tst_pluginhost 7 项通过，0 失败/跳过；GUI 清理修正后连续三次退出码 0。覆盖分组/休止/复合拍子、和弦全链、逻辑光标、局部/范围时值命令、单 Undo/Redo、保存重开、分谱、跨谱表、外部延音、自定义事件、开关写盘及普通粘贴保护。重开谱面的 MIDI 音符事件与关闭开关时未拆分参考谱一致。
+- 测试环境：note / rhythmicGrouping 使用既有 MTEST_LINK_MSCOREAPP，解决旧 testutils 全局 stub 与宿主重复符号。observer 配置隔离；pluginhost 在 Qt 清理字体前销毁主窗口，修正测试退出崩溃。helper 设置 MTEST_DIFF_DIR=E:/Git/usr/bin，避免 Vim diff 不支持参数造成假失败。黄金谱及和声助手生产实现未修改。
+- 边界：未进行人工长期操作或真实 MIDI/音频硬件验收；复杂对象保守跳过，不承诺 Dorico 全部规则。大型 SF2 严格稳定性仍以 0.6.0 的实测数据/限制为准。
+- 维护：新增 mtest/libmscore/inputrhythm，扩展真实 pluginhost GUI；更新结构/功能指南、源码索引及 personal/docs/12-input-rhythm.md；中文翻译上下文 Ms::MuseScore。
+- 部署：复用独立 0.6 构建树，保持配置安装前缀避免全量重编，用 cmake --install --prefix 安装到 msvc.install_personal_0_7_x64，保留全部旧程序/原音源/和声助手。
+- Git 父提交：1255ab45ccefbaac710b1fbb58c46e5dc554ce30。
+- Git 提交主题：feat(notation): automatically group input rhythms and tied chords。
+- 提交定位：personal-v0.7.0 标签指向本次提交；普通 push 分支/标签，不强推。
+
+## 0.6.0 — 2026-10-06
+
+- 类型：大型标准 SF2 解析修复与播放前预加载。上游应用仍 3.7.0；已有个人版本 0.5.0 的和声助手已独立提交，故本次从 0.5.0 递增；不覆盖旧版本标签。
+- 根因：VSL D-274 V2025A.sf2 为 2,789,995,618 bytes；FSKIP(int) 把 smpl 2,789,809,516 bytes 转为负数，Windows long 仍 32-bit。sfont.h/.cpp 的文件位置/长度/跳转及相关计算改 qint64/quint64，保留格式 unsigned32 字段；检查块边界、单位、采样范围和索引，不删除 RIFF 约 4 GiB 的标准边界。
+- 加载：Sample::load 用临时缓冲、1 MiB 分段读取和取消检查，完整成功后提交，OOM/短读取可重试；sfont3.cpp 保留原 Vorbis 策略并检查解码尺寸。fluid.cpp 对 >=2 GiB 的 SF2 预加载全部预置引用采样，同一 Sample 去重；未完整成功不加入音源列表。音色列表也先准备再提交，分配失败保留旧列表/银行偏移。
+- GUI：fluidgui.cpp 在既有 QtConcurrent 加载入口先 stopWait，保留进度/取消窗并显示具体失败原因；加载结束清除取消状态以免影响旧音源后续预置。fluid.h 进度/取消/全局终止改原子字段。未重构批量替换回滚、Seq、Driver 或 Voice DSP。
+- 正确性验证：Release 主程序及 tst_sfloader 构建/安装/版本启动通过；加载器 10 项通过，0 失败/跳过，包含实际跨 2 GiB 稀疏文件、截断/非法范围、取消/短读取重试、分配失败保留旧音源、小 SF2 和 SF3。真实 GUI 异步/取消 3 项通过，0 失败/跳过，取消后旧列表保持、重载成功及界面心跳通过。
+- 真实 VSL：有记录预加载 2,838 ms，private bytes 增量 2,807,431,168（2.615 GiB），采集时峰值约 2.626 GiB。16/32/64 持续键为 32/64/128 声部，P99 253/465/911 µs，压力最大 402/618/1,128 µs；六秒 WAV 低中高音区/三个力度非零、有限，无削波；实际 CLI 钢琴谱 WAV 导出返回 0，和缺失音源回退结果不同，排除默认 SF3 回退。
+- 稳定性边界：完整十分钟 512-frame / 48 kHz 有记录轮次热阶段 0 read operations / bytes；3 次软件 deadline miss，最长 14.524 ms，返回码 5，严格稳定性未通过。此前十分钟返回码 0，但默认 Qt 日志落到 Windows 调试器而未存数值；已补文件日志，不取其数值作性能证据。真实声卡 underrun、人工听音和 Seq 实际停止/跳转尚未验收；不能承诺任意音源零卡顿，PortAudio 仍使用自动块大小，若设备控制面板允许可试 1024-frame 缓冲，尖峰具体原因未跟踪定位。
+- 回收：首次卸载释放 2,806,112,256 private bytes；连续重载两轮 3,614/3,604 ms，卸载后 13.71/13.24 MiB，未累积音源规模内存。原文件只读，既有循环边界修复规则保留。
+- 维护：新增 mtest/audio/sfloader、sfloadergui；更新 personal/docs/11-large-sf2.md、01/04/README/source-map。夹具/WAV/日志仅在忽略构建目录；修复 Windows GUI Qt 日志输出方式。共享 PCH 丢失时只设置进程 /Y- /MP2，不改上游默认。
+- 部署：独立 msvc.install_personal_0_6_x64/bin/MuseScore3Evo.exe，保留旧程序/音源；同 SDK QmlModels/QmlWorkerScript DLL 补齐。日志位于 msvc.build_personal_0_6_x64：sfloader-tests.txt、vsl-benchmark.txt、vsl-process-peak.json、sf2-preview.wav、sf-isolated-final-build.log、sf-isolated-final-install.log。
+- Git 父提交：94ad5775a5aadc1ba07251fa60894382d60feaf0。
+- Git 提交主题：feat(audio): load and preload large standard SF2 soundfonts。
+- 提交定位：personal-v0.6.0 标签指向本次提交；git rev-parse personal-v0.6.0 查询 SHA。核对 origin/3.x 后普通 push 分支/标签，不强推。
+
+## 0.5.0 — 2026-10-06
+
+- 类型：和声助手 1.3.0，补齐移动/编辑遮挡、变化节拍锚点、背景遮罩与顶部摘要/右侧详情。上游应用仍为 3.7.0，谱面格式不变。
+- 插件：share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml 的全谱描述符在释放/踏板变化等无新音时也生成独立标记，chordTick 与用于定位乐器的数值 Note 描述符分离；Preferences.js / AppearanceEditor.qml 增加 chordMask、respectExistingHarmony、dualPanel，schema 1 向后兼容、自动读取/原子保存/配置交换。顶部操作三行，保持居中/自定位置，右侧完整内容仍能加宽双列、拖动悬浮；原功能保留。
+- 原生标注：mscore/notepreview.h 分离颜色 QHash 和标记 QVector，一个持续 Note 可对应多次变化；每乐器二分时间索引和小型活动集合不变。QMultiHash 不透明来源索引用于析构时清掉该音所有标记，不调用已析构 Element 的虚函数；旧内联记号描述符仍支持。
+- 原生几何：mscore/plugin/api/scoreobserver.h/.cpp 用变化所在 Measure/System 的节拍 x 锚点，无新音时在相邻 ChordRest 位置之间插值，不使用来源音的位置；同系统/乐器共同四行避让。当前功能标签避开固定记号缓存并复用全谱几何，原谱普通/Nashville 和弦及 Roman 级数可优先保留，另一个字段可补充。背景遮罩关闭后仍避让原谱并保留文字高亮。
+- 编辑优先级：mscore/scoreview.h/.cpp 隐去与当前原生编辑/拖动对象相交的临时标签，编辑状态不消费插件双击；mscore/editelement.cpp 在开始/结束编辑时补齐标记区域刷新。普通选择/播放不移动固定记号；原生对象、光标和快捷键仍走原流程。
+- 通用双面板：mscore/plugin/qmlplugin.h/.cpp 暴露 detailPanelHost/detailPanelVisible、showDetailPanel/focusDetailPanel 和关闭通知；一个辅助 QDockWidget/QQuickWindow 可接受已有 QML 控件的视觉重挂载。默认右侧，标题/背景由插件属性提供；关闭保存偏好，主插件销毁清理辅助面板。不另建 QML engine/ScoreObserver/全谱分析；和声/配置/UI 仍在插件，无 libmscore 模型、Seq、Driver 或音频回调改动。
+- 验证：Release 主程序及三组测试编译/链接；tst_scoreobserver 14、tst_note 11、真实 tst_pluginhost 5 项通过，0 失败/跳过。新增持续音共享源的多个记号与析构清理、真实无新音 tick240 的横坐标、双面板单观察器/控件共享/关闭重开/悬浮返回、原谱和弦/Roman 优先级、遮罩显隐、当前标签移动不遮固定记号、原生和弦文字编辑与方向键光标。JS、固定位置及双面板 QML 测试通过；截图检查。
+- 性能：1000 小节/6000 音符首次索引 23.187 ms；1000 次缓存 snapshot 1.779 ms、context 4.517 ms；数值帧 16.364 ms、全谱色层几何 16.368 ms。6000 音符/1000 标记的单测中，1000 次高亮切换共 0.909 ms（不含屏幕重绘）；实际安装 QML 跨接口 snapshot 10–11 ms、context 18–19 ms。遮罩单测首次对白纸比较白色背景无可见差异，改用有色高亮背景后验证通过，不改生产实现。
+- 部署：独立 msvc.install_harmony_1_3_x64/bin/MuseScore3Evo.exe，保留全部旧安装；同 SDK Qt5QmlModels.dll / Qt5QmlWorkerScript.dll 补齐。启用副本逐文件与父提交比较，保存 .pre-1.3.0.bak 后同步十二个发布文件。配置 restart smoke 同一隔离目录连续启动两次验证新增三个开关与已有样式/功能名恢复，临时图层不改原色。
+- 构建环境：PCH 缓存失效时只在构建进程设置 /Y- /MP1，不改上游默认；新增宿主字段后早期部分旧对象混用导致 GUI 创建崩溃，强制重新编译 mscoreapp 全部已有源（仅更新时间戳、不删文件）并重新链接后复验。该早期产物未部署到启用副本。审批服务曾因账户限额暂时无法完成自动审查，恢复后正常通过；没有绕过限制。
+- 边界：密集/过大记号会省略；相邻节拍间位置是视觉插值；原谱和弦优先保留不改变原谱颜色。标注仅屏幕显示、不写 undo/MSCX/PDF；真实音频/MIDI 硬件与长会话未验收，不承诺零开销或 DAW 硬实时。
+- 日志：msvc.build_harmony_release_x64/harmony-1-3-build.log、harmony-1-3-recompile.log、harmony-1-3-install.log、harmony-gui-1-3/gui.txt、harmony-observer-1-3/gui.txt、harmony-note-1-3/gui.txt；插件 tests/native-smoke-installed-1-3 与 native-gui-1-3。旧日志及首次调查基线保留。
+- Git 父提交：9a5ae07ec43b3c6aacd53692c199b8f94ced8e75。
+- Git 提交主题：feat(plugins): anchor harmonic changes and share detail docks。
+- 提交定位：personal-v0.5.0 标签指向本次提交；git rev-parse personal-v0.5.0 查询 SHA。核对 origin/3.x 后普通 push 分支/标签，不强推。
+
+## 0.4.0 — 2026-10-05
+
+- 类型：和声助手 1.2.0 显示与交互完善；上游应用仍为 3.7.0，数据格式不变。
+- 插件需求：顶部横条默认居中、可选左右及百分比位置；谱面只和弦/只级数/同时显示、四种排列、字体/字号/颜色及离调强调；稳定侧栏区域、悬停全文、实际颜色对话框。设置 schema 1 向后兼容并自动保存加载，原分析/配色/交换/手动/键盘功能保留。
+- 原生修改：mscore/notepreview.h 添加固定文字布局、每乐器有序标记索引和小型活动集合；mscore/plugin/api/scoreobserver.h/.cpp 提供 setActiveScorePreview、previewActivated、受限样式描述符、同系统/乐器统一四行避让。播放切换只改活动集合和旧/新标记脏区域，不复制全谱 QHash。
+- 视图接线：mscore/scoreview.h/.cpp 在屏幕 paint 单独绘制固定记号，避免依赖当前音符绘制；mscore/events.cpp 双击命中标记时通知所属观察器，非命中沿原处理；mscore/plugin/qmlplugin.h/.cpp 增加 focusPanel。弱 QObject 接收目标，析构仍只比较不透明 Element 地址。
+- 解耦：界面、配置、音乐解释/离调模板规则都在 share/plugins/HarmonyAssistant；新增 StableLabel/ColorOption/AppearanceEditor，共十一个运行文件及 README。原生仅提供泛用屏幕标记、时间索引和交互。没有修改 libmscore 数据、序列化、Seq、Driver 或音频回调。
+- 排版边界：固定文字锚定写入音符/节拍；同系统/乐器统一行，最多四个邻近候选，冲突省略。默认取谱样式的和弦字体（Edwin），不是 Harmony 原生后缀渲染。太密或太大文字不能保证全部放下；只作用屏幕，不写入 MSCX/PDF/undo。离调强调基于模板含调外音，小调 V/导音允许升七级，不保证唯一功能解释。
+- 验证：Release 主程序和测试编译/链接成功；tst_scoreobserver 13、既有 tst_note 11、真实 tst_pluginhost 3 项通过，0 失败/跳过。JS 和 Qt5 面板通过，验证旧配置/样式限值/离调规则、播放不重建底层、左右居中和侧栏固定位置；GUI 验证菜单崩溃路径、固定记号同一行、真实鼠标双击、低音锚点整乐器跳转、选色器写入、顶栏/悬浮/停靠/关闭重开。截图已检查。
+- 安装：独立 msvc.install_harmony_1_2_x64/bin/MuseScore3Evo.exe；补齐同 Qt SDK 的 Qt5QmlModels.dll / Qt5QmlWorkerScript.dll，解决独立启动缺库。旧程序/目录/备份保留。用户启用副本逐个与父提交比较后保存 .pre-1.2.0.bak，再同步十二个发布文件。
+- 实际安装 smoke：独立 -c 设置连续两次启动，通过 Cmaj13/6 持续音、原色不变、配置保存/再读取、空拍清空、分析帧与索引复用；第二次自动恢复仅级数、级数在上、字号 140%、颜色 #224466、横条右对齐和功能名 third。
+- 性能：1000 小节/6000 音符首次索引 24.031 ms；1000 次缓存 snapshot 1.678 ms、context 4.262 ms；数值帧 16.030 ms、全谱色层几何 16.123 ms。6000 音符/1000 标记的索引单测中，1000 次高亮切换共 0.716 ms（不含实际重绘）；安装 QML 跨接口 snapshot 约 8 ms、context 19 ms。初始检测/布局有成本，不承诺所有工程零开销或 DAW 硬实时。
+- 测试夹具修正：固定标记使用实际写入 tick480 的锚点，不误用持续低音；搜索范围按实际 spatium 扩展至乐器上方，缩放取整后用文字框内部坐标双击。没有为测试改谱面排版或生产导入路径。运行时完整 staging 防止缺 DLL 导致测试无法启动。
+- 未验收：实际音频/MIDI 设备、长时间会话和全部特殊谱法；原有延音/踏板语义未改变。实际 GUI fixture 关闭硬件音序器，不控制用户已打开的应用。
+- 日志：msvc.build_harmony_release_x64/harmony-1-2-build.log、harmony-1-2-install.log、harmony-observer-1-2/gui.txt、harmony-note-1-2/gui.txt、harmony-gui-1-2/gui.txt 和截图；插件 tests/native-smoke-installed-1-2。更新相关指南、源码索引，基线快照保留。
+- Git 父提交：a818d9a7009306a721363b17a2aab4ee3178ab09。
+- Git 提交主题：feat(plugins): align fixed harmony annotations and configurable display。
+- 提交定位：personal-v0.4.0 标签指向本条提交，git rev-parse personal-v0.4.0 查询 SHA；核对远端后普通 push origin/3.x 与标签，不强推。
+
+## 0.3.0 — 2026-10-05
+
+- 类型：修复插件菜单崩溃，发布和声助手 1.1.0；上游应用基线仍为 3.7.0，不修改谱面格式或应用版本字段。
+- 崩溃根因：Windows BEX64 / 0xc0000409 转储通过函数映射定位到 QML 缩略谱 doLayout → Element 析构 → ScoreView::onElementDestruction；旧代码调用 e->isNote() 时派生虚函数已经析构。mscore/scoreview.cpp 与 notepreview.h 改为只比较不透明 Element 地址；测试实际创建 native 和 QML 两种视图并触发重排。
+- 最小通用宿主接线：mscore/plugin/qmlplugin.h/.cpp 的 QPointer 停靠状态、悬浮控制和可选横条高度；mscorePlugins.cpp 连接已有 QDockWidget；pluginManager.cpp 去除 QDirIterator 已递归后再次递归的重复扫描。其他插件没有声明高度提示时保持原行为。
+- 新增通用能力：scoreobserver.h/.cpp 的 contextSnapshot、analysisFrames、setScorePreview/clearAllPreviews、本地原子文本/配置读写。缓存延音线持续终点、所属乐器踏板窗口、数字小节/事件索引和范围内容指纹。即时音与分析上下文分开；无踏板窗口限小节并按声部休止截断。读文件最多 16 MiB，配置跟随 dataPath / -c / 便携设置。
+- 屏幕标注：notepreview.h 的可选 label/chord/active 与几何，scoreview.cpp 独立绘制；全谱底层和播放当前层分离，当前高亮复用底层位置。避开现有记谱元素与同批文字，拥挤时省略。打印/foto、Note 原色、音乐模型、undo 和保存字段不改变；未修改 Seq、Driver 或音频回调。
+- 插件：share/plugins/HarmonyAssistant 的八个运行文件与 README；Preferences.js、Analysis.js、ConfigurationEditor.qml、SettingsStore.qml 新增。响应式顶栏/侧栏/双列/悬浮、独立详情窗口、Carbon/柔和/单色与自定义标签颜色、自动配置保存加载、全小节配色、JSON 分析交换/CSV 导出、谱面和弦与功能标签独立开关。原选区/调性/手动和弦/键盘/旧宿主恢复功能保留。
+- 解耦评估：音乐判断、交换格式和 UI 均留插件；纯插件不能提供无 undo 的屏幕层、真实播放活动音或实际 Qt 停靠状态，故增加泛用数值/视图接口。没有引入运行库、改序列化或改音频调度；合并点限定现有宿主/视图少量局部行。
+- 构建：x64 Release 编译、链接、独立安装通过；程序 msvc.install_harmony_1_1_x64/bin/MuseScore3Evo.exe。原安装目录与插件备份保留；用户已启用的个人插件副本经与父提交逐文件比较后备份、同步，防止同名旧入口优先加载。
+- 验证：tst_scoreobserver 11、tst_note 11、tst_pluginhost 3 项全部通过，0 失败/跳过；JS 和 Qt5 面板测试通过。真实 GUI suite 覆盖缩略谱重排、四次菜单弹出、加载插件、顶部横条、浮动宽面板、右侧停靠、关闭重开及实际屏幕绘制差异；检查原生 QML 窗口截图。native smoke 使用安装程序、独立设置和测试谱验证 Cmaj13、6 持续音、上下文/分析帧、配置读写、原色不变、空拍清空和缓存复用；原生 suite 还验证 MSCX 保存字节不变。
+- 性能：1000 小节/6000 音符索引 24.335 ms；1000 次缓存 snapshot 2.069 ms、contextSnapshot 5.371 ms；6000 音符数值帧 20.204 ms、全谱色层定位 23.227 ms。QML 跨接口 1000 次 snapshot 约 10 ms、context 约 19 ms。插件分批检测另有成本，标注拥挤程度会影响避让时间；这些是本机样本测量，不是零开销或硬实时承诺。播放沿 GUI 心跳，隐藏停止任务。
+- 回归资源：mtest/mscore/scoreobserver/arpeggio.mscx 和扩展 suite；mtest/mscore/pluginhost 新 GUI suite 注册到 mtest/CMakeLists。personal/tools/test_harmony_gui.py 为 Windows Qt 测试准备独立相对路径运行时并限时，直接 QTEST_MAIN 不执行 main() 的工作区/硬件初始化；插件销毁已测试，主窗口工作区保存不属于该 fixture。修正 test_harmony_host.py 先创建 -c 目录，避免目录不存在时程序回退到默认设置。
+- 测试环境：GUI fixture 的 Qt 样式加载也读取 QLibraryInfo，必须使用一致的相对 QML/plugin 路径与完整资源；早期缺资源/命名空间及 fixture 未初始化工作区的失败已定位并修正测试夹具。Widgets 的 grab 不包含嵌入原生 QML，最终截图改为 QQuickView::grabWindow。没有据此改生产全局导入路径。蓝屏后旧 PCH 无法复用，最终本机 /Y- /MP1 单并行编译；不修改上游构建默认值。
+- 未验收项：实际音频/MIDI 设备、长时间播放/编辑和所有特殊谱法；记谱踏板保持不能测量声学衰减，也不能保证唯一和声意图。标注是屏幕临时层，MSCX/PDF 不保存这些文字，需保留分析 JSON。没有复刻或声称掌握 Synthesia 私有算法。
+- 日志：msvc.build_harmony_release_x64/harmony-1-1-observer.txt、harmony-1-1-note.txt、harmony-gui-final/gui.txt 与 QML 截图；实际安装宿主报告位于独立插件工作区 tests/native-smoke-installed-1-1。构建日志 harmony-1-1-link.log、harmony-1-1-install.log；运行时、产物、日志均忽略。
+- 指南：同步个人入口、架构、功能、钢琴专题、构建验证、通用观察/预览 API 和受影响源码定位；baseline 不改写。
+- Git 父提交：b878200db892d62c0481f9d06ae58753cfc6738b。
+- Git 提交主题：fix(plugins): stabilize host and extend harmony preview tools。
+- 提交定位：personal-v0.3.0 标签指向本条提交，git rev-parse personal-v0.3.0 获取完整 SHA；普通推送到个人 origin/3.x，禁止强推。
+
+## 0.2.0 — 2026-10-05
+
+- 类型：钢琴和声插件 1.0.0 + 通用原生观察/预览接口；应用上游基线仍为 3.7.0，不修改应用版本或谱面文件格式。
+- 结果：当前和弦/级数、1/3/5/7/9/11/13 功能音、持续音/左右手、真实播放事件跟随和屏幕临时配色；响应式窄面板、手动识别/调性/键盘/恢复/刷新功能保留。颜色不写 Note 属性，不触发 undo，不进入保存/导出。
+- 解耦评估：纯插件无法获得精确播放通知或独立临时色层；选择插件音乐/UI + 泛用原生接口。没有修改 Seq/Driver/音频回调，不以定时器模拟播放进度，不引入外部依赖或文件格式字段。
+- 新模块：`mscore/plugin/api/scoreobserver.h/.cpp` 提供 GUI 侧 Seq/Score 事件、数值快照与按内容状态/范围失效的声部索引；`mscore/notepreview.h` 提供按 owner 隔离的视图图层。
+- 最小接线：`qmlpluginapi.h/.cpp` 工厂、`plugin.cmake` 编译清单；`ScoreView.h/.cpp` 屏幕绘制/局部刷新/换谱与删除清理；`libmscore/note.h/.cpp` draw 颜色重载。默认选中颜色、播放标记、不可见音符和音域提示保留。
+- 发布：`share/plugins/HarmonyAssistant/` 含四个运行文件及 README，现有 share 递归安装规则直接打包；日常编辑源仍是独立 `muse3_plugins/HarmonyAssistant/` 工作区，没有删除原稿或其他插件。
+- 测试：新增 `mtest/mscore/scoreobserver/` 的小谱、Qt suite、JS 和真实 CLI smoke；`personal/tools/test_harmony_host.py` 用独立配置和超时。`mtest/CMakeLists.txt` 注册新 suite，并补齐 testutils 的 FreeType 头依赖；`tst_note.cpp` 原有 Windows Chord 名称保护扩展到 MSVC，应用行为不变。
+- 构建：完整 x64 Debug 构建/链接/安装通过；Release 优化构建/链接/安装通过。最终可执行程序 `msvc.install_harmony_release_x64/bin/MuseScore3Evo.exe`，完整插件已安装到同级 `plugins/HarmonyAssistant`。
+- 功能验证：新 Release 实际加载插件，Cmaj13 持续音 6 个，原始音符颜色不变，空拍清空，缓存不重建；JS 回归和 Qt5 模拟选区/播放/隐藏/撤销/280/360/460px 排版通过。原生 `tst_scoreobserver` 8 通过，`tst_note` 11 通过，无跳过/失败；保存前后 MSCX 字节一致，预览与默认绘图隔离，撤销失效与颜色层移除验证通过。
+- 性能：1000 小节/6000 音符索引 10.130 ms；1000 次原生缓存查询总计 1.538 ms，小谱基准约 0.001 ms/次；真实 QML 跨接口 1000 次约 9–18 ms（运行负载不同）。GUI 心跳沿原程序约 20 ms，插件最多合并等待 16 ms；相同音集合跳过和弦识别/色层重绘，隐藏停止计时。不是硬实时上限或 DAW 全设备性能保证。
+- 恢复与环境：编译期间用户电脑蓝屏，源码/Release 产物保存完好，恢复后实际加载与回归复验。没有证据认定蓝屏原因。共享 PCH 缓存失效/被清理，最终测试进程临时 `/Y-` 并使用已编译依赖；既有 suite 最初缺 GNU diff 的 5 项失败，在 PATH 补 Git usr/bin 后 11 项全部通过，不更改参考谱。Debug 测试运行时不匹配，验证以完整 Release Qt 配置为准。
+- 未验收项：实际音频/MIDI 硬件、长时间编辑/播放、所有特殊谱法及停靠视图的完整人工交互；踏板下 Note-off 后声学残响不纳入和弦。播放读取 GUI 侧活动 NoteEvent，支持发声音高偏移及分谱投射；不能仅凭 pitch 集合保证唯一根音。
+- 记录：本机测试日志 `msvc.build_harmony_release_x64/harmony-regression/observer.txt`、`note-with-diff.txt`，真实宿主报告 `harmony-smoke-final/native-smoke.json`；构建日志在 `msvc.build_probe_x64/harmony-*.log`，产物与日志均忽略。
+- 指南：同步架构、功能表、钢琴专题、构建验证、入口、受影响源码索引；新增 `personal/docs/10-score-observer.md`。初始 baseline 不改写。
+- Git 父提交：`88d2d9a389a693b56392ffde9b641aff4c21ec4e`。
+- Git 提交主题：`feat(plugins): add score observation and screen-only harmony preview`。
+- 提交定位：`personal-v0.2.0` 标签指向本条提交，用 `git rev-parse personal-v0.2.0` 核对 SHA。
+- 合并影响：核心接线为少量局部行，其余为新增 helper、测试、独立插件和 personal 文档；普通绘制/模型/序列化路径保留。推送前已核对个人 origin 3.x 为父提交，没有额外合并上游。
+
+## 0.1.1 — 2026-10-05
+
+- 类型：Windows 构建验证、本地辅助脚本与指南更新。
+- 需求与结果：核对最新 Evolution `3.x` 源码；在现有 VS2019 Build Tools 上完成 x64 Debug 编译、链接、安装及 `--version` 启动验证。
+- 上游源码：GitHub API 核对 HEAD 仍为 `f2a80b9f59dd396698b3b507a19a56bfb8791af2`，配置和 Windows CI 脚本 blob 与本地相同；没有拉取/合并新源码。
+- 本机补齐：从项目 CI 地址下载 Qt 5.15.2 msvc2019_64 与依赖包，解压到忽略的 `dependencies/`；产物、档案和日志在忽略的 `msvc.*` 目录，不纳入 Git。未修改系统环境或已有应用安装。
+- 新增 `personal/tools/build_windows.ps1`：识别 Build Tools，显式 VS2019/v142 或 VS2022/v143，配置 Qt、本地输出、并行编译及可选安装；恢复进程环境，检查 CMake 退出码。不改上游构建脚本，关闭本机缺失的 JACK，保留 PortAudio/PortMidi。
+- 指南：新增 `personal/docs/09-windows-build-check.md`，记录最初 VS 检测/qmake 阻塞、依赖包来源与 SHA、复现入口、实测日志和运行限制；同步入口、架构、功能表和构建章。初始 baseline/源码索引保留原基准。
+- 验证：完整 Debug 构建与安装返回 0；个人脚本顺序复验返回 0；版本命令返回 0、输出 3.7.0-Development；脚本语法解析、指南校验和 `git diff --check` 通过。
+- 运行限制：离屏 PDF 已生成且转换日志打印成功，但进程退出超时，未判为完整通过；未验证 GUI、播放/MIDI 硬件、测试套件或 Release。首次脚本与运行测试并行导致 exe 复制占用，结束测试后顺序重试通过。
+- 应用行为/格式：没有修改应用源码、资源、上游应用版本或文件格式；个人维护版本递增为 `0.1.1`。
+- Git 父提交：`5743890f996abd3683a46d9a0dd4863b80944c2e`。
+- Git 提交主题：`build(personal): validate Windows build and add local helper`。
+- 提交定位：提交后创建 `personal-v0.1.1`；`git rev-parse personal-v0.1.1` 获取本条对应完整 SHA。
+- 上游合并影响：所有 Git 修改均在 `personal/`，无需应用代码合并。
+
+## 0.1.0 — 2026-10-05
+
+- 类型：文档、源码导航与维护流程初始化。
+- 基准源码：`f2a80b9f59dd396698b3b507a19a56bfb8791af2`，分支 `3.x`，应用配置 `3.7.0`。
+- 新增 `AGENTS.md` 仓库内入口；`personal/docs/` 的架构、模型、调用链、功能分布、钢琴专题、构建与开发指南。
+- 新增可检索的 `source-map.tsv`、基准快照 `baseline.json` 和只读校验工具 `personal/tools/check_guides.py`。
+- 应用行为：未修改 C++、Qt UI/QML、资源、应用版本或构建配置；个人维护版本初始化为 `0.1.0`。
+- 验证：`python personal/tools/check_guides.py` 校验内部文档链接、源码路径/符号/行号及版本元数据；`git diff --check` 检查文本格式。未进行应用编译/运行：本次仅增加材料，检查时 PATH 无 qmake，仓库无 dependencies 和配置好的构建目录。
+- Git 提交主题：`docs(personal): establish AI architecture and development guides`。
+- 提交定位：同名版本标签 `personal-v0.1.0` 指向包含本条日志的提交，使用 `git rev-parse personal-v0.1.0` 获取完整 commit SHA；标签在提交完成后创建，避免提交内容引用自身 SHA 的循环问题。基准 SHA 已在上方记录。
+- 上游合并影响：仅新增个人目录与仓库内 AGENTS.md，无现有应用文件修改。

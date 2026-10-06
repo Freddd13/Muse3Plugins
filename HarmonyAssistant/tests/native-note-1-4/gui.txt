@@ -1,0 +1,144 @@
+********* Start testing of TestNote *********
+Config: Using QtTest library 5.15.2, Qt 5.15.2 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2019), windows 10
+QDEBUG : TestNote::initTestCase() Ms::ScoreFont::load: :/fonts/bravura//metadata.json is the metadata file for :/fonts/bravura//Bravura.otf
+QDEBUG : TestNote::initTestCase() Ms::ScoreFont::scanUserFonts: Found 0 private score font in "C:/Users/Fred/Documents/tst_note/Score Fonts".
+QDEBUG : TestNote::initTestCase() Ms::ScoreFont::scanUserFonts: Found 0 system score font in "C:/Users/Fred/AppData/Local/SMuFL/Fonts".
+QDEBUG : TestNote::initTestCase() Ms::ScoreFont::scanUserFonts: Found 0 system score font in "C:/ProgramData/SMuFL/Fonts".
+QDEBUG : TestNote::initTestCase() Ms::ScoreFont::load: :/fonts/leland//metadata.json is the metadata file for :/fonts/leland//Leland.otf
+PASS   : TestNote::initTestCase()
+PASS   : TestNote::note()
+QDEBUG : TestNote::grace() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::grace() Ms::MTest::compareFilesFromPaths: Running  "diff"  with arg1:  "grace-ref.mscx"  and arg2:  "grace-test.mscx"
+PASS   : TestNote::grace()
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpc() Ms::MTest::compareFilesFromPaths: Running  "diff"  with arg1:  "tpc-ref.mscx"  and arg2:  "tpc-test.mscx"
+PASS   : TestNote::tpc()
+QDEBUG : TestNote::tpcTranspose() Ms::MTest::compareFilesFromPaths: Running  "diff"  with arg1:  "tpc-transpose-ref.mscx"  and arg2:  "tpc-transpose-test.mscx"
+PASS   : TestNote::tpcTranspose()
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::tpcTranspose2() Ms::MTest::compareFilesFromPaths: Running  "diff"  with arg1:  "tpc-transpose2-ref.mscx"  and arg2:  "tpc-transpose2-test.mscx"
+PASS   : TestNote::tpcTranspose2()
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::noteLimits() Ms::MTest::compareFilesFromPaths: Running  "diff"  with arg1:  "notelimits-ref.mscx"  and arg2:  "notelimits-test.mscx"
+PASS   : TestNote::noteLimits()
+PASS   : TestNote::tpcDegrees()
+PASS   : TestNote::alteredUnison()
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+QDEBUG : TestNote::LongNoteAfterShort_183746() Ms::UndoStack::push: no active command, UndoStack
+PASS   : TestNote::LongNoteAfterShort_183746()
+PASS   : TestNote::cleanupTestCase()
+Totals: 11 passed, 0 failed, 0 skipped, 0 blacklisted, 1496ms
+********* Finished testing of TestNote *********
