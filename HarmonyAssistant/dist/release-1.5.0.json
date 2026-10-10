@@ -1,0 +1,50 @@
+{
+  "pluginVersion": "1.5.0",
+  "personalVersion": "0.22.0",
+  "nativeCommit": "4c04ca7116d7204493fb2a33b71214d108fb63c1",
+  "nativeParent": "3dc1d38c837875befe292c7a73f4eecd82dd03cb",
+  "pluginTag": "harmony-v1.5.0",
+  "files": {
+    "Analysis.js": "10c90fdb9365e4b61b6c33810f832490b89fa365c4a74edb6a58490f41bda788",
+    "AppearanceEditor.qml": "a4cfd1bef876da25e56a1a23d5f86f3617c3dc556965dd7adb5ea1816cd6dbf2",
+    "ColorOption.qml": "3c912245689a0caba0a9d95f85beb5bd8a14cffc372146acdacb4ee0780d352e",
+    "ConfigurationEditor.qml": "3d3db0b28196d693494fdd6697e6f6f176473aa06289cb1995f7caed4151a660",
+    "DeskButton.qml": "8785cfe0fbc8f0fd240d1b4e02c93910727994ccda1b3578f552bbacdf5b4ebf",
+    "DeskComboBox.qml": "f863ac64bfa608e75a9f524b0e356b8ba68f57084d872fed405769a93fd15eec",
+    "DeskSpinBox.qml": "c02cdd4088231211ae172bce8ed5cbc21c42267da3977029fdcb166cf918a9b5",
+    "DeskSwitch.qml": "673a2a93625ed2b62e925742c0e67b8d5f1eca28848aa183df67edcd131dc542",
+    "DeskTextField.qml": "d906bf65a9b84373397ed9184af307ab0158d5ec93fbb4e3d85d5c448b38c538",
+    "Harmony.js": "d830361a9e0d6d06585bed9fd6994e8362536f5936678e01f7f9fca938d9b666",
+    "HarmonyAssistant_MS3.qml": "87d637c711acccc6636c1e8e66b42bb44abf7a14d3e7871f094255684c59c29a",
+    "MarkerList.qml": "c08b4c8800e991d6a515bb2c437281a43d1dae2ce69ce8c66c24b0bf67400bcf",
+    "PanelCard.qml": "0d7fa9c60cc9f1d7bd2bdb3d65f80870929a265785d89272e2838a3ef4447653",
+    "Preferences.js": "c505968613f33f55664cca1803f61de56a321d6583e80c716425b49dbff0b1b8",
+    "RangeEditor.qml": "1a4980cbb596d36b1cd1d79d1dcd0e50c5ca9234a0e7c2a98c18e14b31cd5714",
+    "README.md": "19f65ca2e869b0e29218303bfddba213c4131961208ecb0b49347d48296390da",
+    "SettingsStore.qml": "b934653f7e94fdbb960fd433ddce1024b5d0012cce00d645675cfe0e96ddefd5",
+    "StableLabel.qml": "e35069e54f311d9ae6bbb6903e1bfedd9601f50312f455790854d8916ae76a4b",
+    "Timeline.js": "d1480ad1aa545a9e7d397ccad6c660ced564dd233e1eeee728adf6160daa25fe",
+    "UiLabel.qml": "b1bf8c955ffdd7461832aa1df58a38552e95a09c6d8ad2df82b1b10c1a8cb510",
+    "UiTheme.qml": "e6b416f00a9cd5c0c57ebe1b204448f2e9b26db379795f6a25276366c3a2118b"
+  },
+  "HarmonyAssistant-1.5.0.zip": "6e6ef74795ba03e66b32b909333d9cbcd5451b831ddc8f8d1d789f57a816c163",
+  "nativePatchSHA256": "69e78d8e18b5aae39611d878a182b5757d6c6e4e3f7ce884ad7d431399d30614",
+  "MuseScore3Evo.exe": "5a006789124bc0abb31cfb1f88898d3ac13092e9e0a5be26560068a2f3760527",
+  "executable": "E:\\programming\\funcodes\\muse3_dev\\MuseScore\\msvc.install_harmony_1_5_x64\\bin\\MuseScore3Evo.exe",
+  "checks": {
+    "scoreobserver": 17,
+    "pluginhost": 12,
+    "failed": 0,
+    "skipped": 0,
+    "restarts": 2,
+    "persistedCorrection": "Am/C",
+    "lightDarkPointerControls": true,
+    "completeListClick": true,
+    "fourCopiesIdentical": true
+  },
+  "knownLimits": [
+    "Finite page space can still require pending markers.",
+    "No real audio device long-session test.",
+    "Existing Qt warnings and three pre-existing external guide links remain."
+  ]
+}

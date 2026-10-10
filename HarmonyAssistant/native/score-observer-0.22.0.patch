@@ -1,0 +1,1433 @@
+From 4c04ca7116d7204493fb2a33b71214d108fb63c1 Mon Sep 17 00:00:00 2001
+From: Freddd13 <50367552+Freddd13@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 12:46:43 +0800
+Subject: [PATCH] fix(harmony): redesign inspector and adapt chord marker
+ placement
+
+---
+ mscore/notepreview.h                          |  17 ++
+ mscore/plugin/api/scoreobserver.cpp           |  37 ++--
+ mtest/mscore/pluginhost/tst_pluginhost.cpp    |  50 ++++-
+ mtest/mscore/scoreobserver/high-treble.mscx   |   2 +
+ .../scoreobserver/tst_scoreobserver.cpp       |  18 ++
+ personal/CHANGELOG.md                         |  13 ++
+ personal/USER_GUIDE.md                        |  15 +-
+ personal/VERSION                              |   2 +-
+ personal/docs/04-feature-map.md               |   2 +
+ personal/docs/10-score-observer.md            |   8 +
+ personal/docs/README.md                       |   2 +
+ personal/docs/source-map.tsv                  |  11 +-
+ .../HarmonyAssistant/AppearanceEditor.qml     |  53 ++---
+ .../plugins/HarmonyAssistant/ColorOption.qml  |   9 +-
+ .../HarmonyAssistant/ConfigurationEditor.qml  |  29 +--
+ share/plugins/HarmonyAssistant/DeskButton.qml |  24 +++
+ .../plugins/HarmonyAssistant/DeskComboBox.qml |  35 ++++
+ .../plugins/HarmonyAssistant/DeskSpinBox.qml  |  28 +++
+ share/plugins/HarmonyAssistant/DeskSwitch.qml |  22 +++
+ .../HarmonyAssistant/DeskTextField.qml        |  14 ++
+ .../HarmonyAssistant/HarmonyAssistant_MS3.qml | 181 ++++++++++--------
+ share/plugins/HarmonyAssistant/MarkerList.qml |  41 ++++
+ share/plugins/HarmonyAssistant/PanelCard.qml  |  17 +-
+ share/plugins/HarmonyAssistant/README.md      |  31 ++-
+ .../plugins/HarmonyAssistant/RangeEditor.qml  |  49 ++---
+ share/plugins/HarmonyAssistant/UiLabel.qml    |   5 +-
+ share/plugins/HarmonyAssistant/UiTheme.qml    |  19 ++
+ 27 files changed, 552 insertions(+), 182 deletions(-)
+ create mode 100644 mtest/mscore/scoreobserver/high-treble.mscx
+ create mode 100644 share/plugins/HarmonyAssistant/DeskButton.qml
+ create mode 100644 share/plugins/HarmonyAssistant/DeskComboBox.qml
+ create mode 100644 share/plugins/HarmonyAssistant/DeskSpinBox.qml
+ create mode 100644 share/plugins/HarmonyAssistant/DeskSwitch.qml
+ create mode 100644 share/plugins/HarmonyAssistant/DeskTextField.qml
+ create mode 100644 share/plugins/HarmonyAssistant/MarkerList.qml
+ create mode 100644 share/plugins/HarmonyAssistant/UiTheme.qml
+
+diff --git a/mscore/notepreview.h b/mscore/notepreview.h
+index 99bf94744..2303d7b59 100644
+--- a/mscore/notepreview.h
++++ b/mscore/notepreview.h
+@@ -104,6 +104,23 @@ inline QSizeF layoutPreviewChord(NotePreviewEntry& entry, int order)
+       return combined + QSizeF(2*padding,2*padding);
+       }
+ 
++// Keep the rhythmic x. Each blocked candidate jumps above the actual obstacle edge.
++// This searches the free vertical intervals, rather than sampling six fixed rows.
++inline QRectF findPreviewChordBox(QRectF candidate,const QRectF& page,const QVector<QRectF>& obstacles,qreal gap)
++      {
++      if (candidate.isEmpty() || !page.contains(candidate)) return {};
++      for (int step=0;step<=obstacles.size();++step) {
++            qreal next=candidate.top();
++            for (const auto& obstacle:obstacles)
++                  if (obstacle.adjusted(-gap,-gap,gap,gap).intersects(candidate))
++                        next=qMin(next,obstacle.top()-gap-candidate.height());
++            if (next==candidate.top()) return candidate;
++            candidate.moveTop(next);
++            if (!page.contains(candidate)) return {};
++            }
++      return {};
++      }
++
+ class NotePreviewLayers {
+       struct Layer {
+             const void* owner;
+diff --git a/mscore/plugin/api/scoreobserver.cpp b/mscore/plugin/api/scoreobserver.cpp
+index 56776b518..35abc9764 100644
+--- a/mscore/plugin/api/scoreobserver.cpp
++++ b/mscore/plugin/api/scoreobserver.cpp
+@@ -424,7 +424,7 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+       // Private style/chord list: parsing unknown symbols must not modify the user's score.
+       std::unique_ptr<Ms::MasterScore> scratch;
+       QHash<QString,NotePreviewEntry> rendered;
+-      int hidden=0;QString fontFallback;
++      int hidden=0;QVariantList unplaced;QString fontFallback;
+       for (const auto& descriptor : descriptors) {
+             const auto value=descriptor.toMap();
+             auto note=resolve(value,descriptors.size()>64 ? &segments : nullptr);
+@@ -553,20 +553,26 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+                   qreal height=0;for (int index:group) height=qMax(height,markers[index].chordBox.height());
+                   const qreal top=system->staffYpage(groupIt.key()/VOICES)-sp*1.5-height;
+                   for (int index:group) {
+-                        auto& entry=markers[index];QRectF placed;
+-                        for (int lane=0;lane<6;++lane) {
+-                              const QRectF candidate(positions[index].x(),top-lane*(height+sp*.5),entry.chordBox.width(),height);
+-                              bool collision=!page->bbox().contains(candidate);
+-                              for (const auto& box:occupied[page])
+-                                    if (box.adjusted(-sp*.15,-sp*.12,sp*.15,sp*.12).intersects(candidate)){collision=true;break;}
+-                              if (!collision) for (const auto element:page->items(candidate)) {
+-                                    if (!element->visible() || element->isStaffLines() || element->isPage() || element->isSystem() || element->isMeasure()) continue;
+-                                    if (element->pageBoundingRect().adjusted(-sp*.12,-sp*.12,sp*.12,sp*.12).intersects(candidate)){collision=true;break;}
+-                                    }
+-                              if (!collision){placed=candidate;break;}
++                        auto& entry=markers[index];
++                        const QRectF preferred(positions[index].x(),top,entry.chordBox.width(),height);
++                        const auto pageBounds=page->bbox();
++                        const qreal gap=sp*.12;
++                        QVector<QRectF> obstacles=occupied[page];
++                        if (owner==this) obstacles+=_baseChordBoxes.value(page);
++                        const QRectF corridor(preferred.left()-gap,pageBounds.top(),preferred.width()+2*gap,
++                              qMax(qreal(0),preferred.bottom()-pageBounds.top()+gap));
++                        for (const auto element:page->items(corridor)) {
++                              if (!element->visible() || element->isPage() || element->isSystem() || element->isMeasure()) continue;
++                              const auto box=element->pageBoundingRect();
++                              if (!box.isEmpty())obstacles.append(box);
+                               }
++                        const auto placed=findPreviewChordBox(preferred,pageBounds,obstacles,gap);
+                         entry.chordBox=placed.isEmpty() ? QRectF() : placed.translated(-positions[index]);
+-                        if (placed.isEmpty()) ++hidden;
++                        if (placed.isEmpty()) {
++                              ++hidden;
++                              unplaced.append(QVariantMap{{"tick",entry.chordTick},{"track",entry.annotationTrack},
++                                    {"chord",entry.chord},{"degree",entry.degree}});
++                              }
+                         else {occupied[page].append(placed);chordBoxes[page].append(placed);}
+                         entry.bounds=entry.chordBox.isEmpty() ? QRectF() : entry.chordBox.translated(entry.anchor);
+                         }
+@@ -574,7 +580,7 @@ void ScoreObserver::applyPreview(QObject* owner, const QVariantList& descriptors
+                   }
+             }
+       if (owner==&_baseOwner){_baseColors=colors;_baseChordBoxes=chordBoxes;
+-            setProperty("previewStatus",QVariantMap{{"hidden",hidden},{"fontFallback",fontFallback}});}
++            setProperty("previewStatus",QVariantMap{{"hidden",hidden},{"unplaced",unplaced},{"fontFallback",fontFallback}});}
+       for (auto viewer:_score->getViewer()) {
+             auto view=dynamic_cast<Ms::ScoreView*>(viewer);if (!view) continue;
+             view->setNotePreviewColors(owner,colors,markers);
+@@ -596,7 +602,8 @@ void ScoreObserver::clearPreview(QObject* owner)
+       { for (auto& view : _previewViews) if (view) view->setNotePreviewColors(owner, {}); }
+ void ScoreObserver::clearNotePreviewColors() { clearPreview(this); }
+ void ScoreObserver::clearAllPreviews()
+-      { clearPreview(this); clearPreview(&_baseOwner); _baseColors.clear(); _baseChordBoxes.clear(); _previewViews.clear(); _activePreviewTick=-1; }
++      { clearPreview(this); clearPreview(&_baseOwner); _baseColors.clear(); _baseChordBoxes.clear(); _previewViews.clear(); _activePreviewTick=-1;
++        setProperty("previewStatus",QVariantMap{{"hidden",0},{"unplaced",QVariantList{}},{"fontFallback",QString()}}); }
+ 
+ static QString localPath(const QString& path)
+       { const QUrl url(path); return url.isLocalFile() ? url.toLocalFile() : path; }
+diff --git a/mtest/mscore/pluginhost/tst_pluginhost.cpp b/mtest/mscore/pluginhost/tst_pluginhost.cpp
+index a05d22b54..dabcddb0e 100644
+--- a/mtest/mscore/pluginhost/tst_pluginhost.cpp
++++ b/mtest/mscore/pluginhost/tst_pluginhost.cpp
+@@ -8,6 +8,10 @@
+ #include <QJSValue>
+ #include <QTemporaryDir>
+ #include <QSettings>
++#include <QLabel>
++#include "mscore/mssplashscreen.h"
++#include "mscore/musescoredialogs.h"
++#include "personalbranding.h"
+ #include "mtest/testutils.h"
+ #include "mscore/musescore.h"
+ #include "mscore/scoreview.h"
+@@ -162,7 +166,7 @@ class TestPluginHost : public QObject {
+             for(auto window:QGuiApplication::allWindows()) {
+                   auto view=qobject_cast<QQuickView*>(window);
+                   auto root=view ? qobject_cast<QmlPlugin*>(view->rootObject()) : nullptr;
+-                  if(root && root->version()=="1.4.0") {panel=root;panelView=view;break;}
++                  if(root && root->version()=="1.5.0") {panel=root;panelView=view;break;}
+                   }
+             for(auto candidate:main->findChildren<QDockWidget*>())
+                   if(candidate->windowTitle()=="Harmony Assistant") {dock=candidate;break;}
+@@ -430,6 +434,45 @@ class TestPluginHost : public QObject {
+             view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("native-range-color.png"));
+             main->hide();
+             }
++      void currentPersonalBranding()
++            {
++            QFile version(QString(TESTROOT)+"/personal/VERSION");QVERIFY(version.open(QIODevice::ReadOnly));
++            QCOMPARE(QString::fromUtf8(version.readAll()).trimmed(),QString(KUMO_PERSONAL_VERSION));
++            AboutBoxDialog about;about.show();QTest::qWait(25);
++            const auto label=about.findChild<QLabel*>("versionLabel");QVERIFY(label);
++            QVERIFY(label->text().contains(personalBuildLabel()));
++            const auto credits=about.findChild<QLabel*>("copyrightLabel");QVERIFY(credits);
++            QVERIFY(credits->text().contains(personalReleaseUrl()));
++            const QDir artifacts(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path()));
++            about.grab().save(artifacts.filePath("kumo-about-022.png"));about.hide();
++            MsSplashScreen splash;splash.show();QTest::qWait(30);
++            splash.grab().save(artifacts.filePath("kumo-splash-022.png"));splash.hide();
++            }
++      void highTrebleAndTempoKeepMarkers()
++            {
++            auto main=Ms::mscore;
++            auto score=main->readScore(QString(TESTROOT)+"/mtest/mscore/scoreobserver/high-treble.mscx");
++            QVERIFY(score);main->setCurrentScoreView(main->appendScore(score));
++            main->resize(1100,800);main->show();QTest::qWait(30);
++            auto view=main->currentScoreView();PluginAPI::Score wrapped(score);
++            PluginAPI::ScoreObserver observer;observer.setScore(&wrapped);
++            auto first=observer.snapshot(0,4,8).value("notes").toList().front().toMap();
++            first["chord"]="G";first["degree"]="I";first["chordTick"]=0;first["chordUntil"]=480;
++            auto second=first;second["chord"]="D/F#";second["degree"]="V";
++            second["chordTick"]=480;second["chordUntil"]=960;
++            observer.setScorePreview({first,second});
++            QCOMPARE(observer.previewStatus().value("hidden").toInt(),0);
++            const auto segment=score->tick2segment(Fraction::fromTicks(480),false,SegmentType::ChordRest);
++            QVERIFY(segment);const auto page=segment->measure()->system()->page();
++            const qreal x=segment->pagePos().x()+page->pos().x()+score->spatium()*.3;
++            QSignalSpy activated(&observer,&PluginAPI::ScoreObserver::previewActivated);
++            bool found=false;
++            for(qreal y=page->pos().y();y<segment->pagePos().y()+page->pos().y();y+=1)
++                  if(view->activateNotePreview(QPointF(x,y)) && activated.last().front().toInt()==480)found=true;
++            QVERIFY(found);observer.setActiveScorePreview(480);
++            view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("high-treble-tempo.png"));
++            main->hide();
++            }
+       void denseMarkersKeepTickAndNativeFont()
+             {
+             auto main=Ms::mscore;
+@@ -461,6 +504,11 @@ class TestPluginHost : public QObject {
+             view->grab().save(QDir(qEnvironmentVariable("HARMONY_TEST_ARTIFACTS",_settings.path())).filePath("dense-native-font.png"));
+             const auto normal=view->grab().toImage();first["chordFont"]="Arial";second["chordFont"]="Arial";
+             observer.setScorePreview({first,second});QVERIFY(view->grab().toImage()!=normal);
++            first["chordScale"]=2.0;first["chord"]=QString(64,QChar('W'));first["degree"]="I";
++            observer.setScorePreview({first});
++            QCOMPARE(observer.previewStatus().value("hidden").toInt(),1);
++            const auto unplaced=observer.previewStatus().value("unplaced").toList();
++            QCOMPARE(unplaced.size(),1);QCOMPARE(unplaced.front().toMap().value("tick").toInt(),0);
+             main->hide();
+             }
+       };
+diff --git a/mtest/mscore/scoreobserver/high-treble.mscx b/mtest/mscore/scoreobserver/high-treble.mscx
+new file mode 100644
+index 000000000..f38bdfba4
+--- /dev/null
++++ b/mtest/mscore/scoreobserver/high-treble.mscx
+@@ -0,0 +1,2 @@
++<?xml version='1.0' encoding='utf-8'?>
++<museScore version="3.02"><Score><Division>480</Division><Part><Staff id="1"><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff><Staff id="2"><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff><trackName>Piano</trackName><Instrument id="piano"><trackName>Piano</trackName><instrumentId>keyboard.piano</instrumentId><Channel /></Instrument></Part><Staff id="1"><Measure number="1"><voice><Clef><concertClefType>G</concertClefType><transposingClefType>G</transposingClefType></Clef><TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig><Tempo><tempo>1.333333</tempo><text>♩ = 80  Con dolce nostalgia</text></Tempo><Chord><durationType>quarter</durationType><Note><pitch>79</pitch><tpc>15</tpc></Note><Note><pitch>86</pitch><tpc>16</tpc></Note></Chord><Chord><durationType>quarter</durationType><Note><pitch>79</pitch><tpc>15</tpc></Note><Note><pitch>83</pitch><tpc>19</tpc></Note><Note><pitch>86</pitch><tpc>16</tpc></Note></Chord><Rest><durationType>half</durationType></Rest></voice></Measure></Staff><Staff id="2"><Measure number="1"><voice><Clef><concertClefType>F</concertClefType><transposingClefType>F</transposingClefType></Clef><TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig><Chord><durationType>half</durationType><Note><pitch>36</pitch><tpc>14</tpc></Note><Note><pitch>52</pitch><tpc>18</tpc></Note><Note><pitch>55</pitch><tpc>15</tpc></Note></Chord><Rest><durationType>half</durationType></Rest></voice></Measure></Staff></Score></museScore>
+diff --git a/mtest/mscore/scoreobserver/tst_scoreobserver.cpp b/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
+index b4b7fe9a0..c7c02e58f 100644
+--- a/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
++++ b/mtest/mscore/scoreobserver/tst_scoreobserver.cpp
+@@ -336,6 +336,24 @@ class TestScoreObserver : public QObject, public MTest {
+             QCOMPARE(context.value("pedalWindows").toList().front().toMap().value("start").toInt(),0);
+             }
+ 
++      void adaptiveMarkerPlacement()
++            {
++            const QRectF page(0,0,500,500),preferred(120,300,80,20);
++            QVector<QRectF> obstacles;
++            for(int row=0;row<6;++row)obstacles.append(QRectF(110,300-row*40,100,2));
++            for(int row=0;row<6;++row) {
++                  const auto oldCandidate=preferred.translated(0,-row*40);
++                  QVERIFY(std::any_of(obstacles.begin(),obstacles.end(),[&](const auto& box){return box.intersects(oldCandidate);}));
++                  }
++            const auto placed=findPreviewChordBox(preferred,page,obstacles,1);
++            QVERIFY(!placed.isEmpty());QCOMPARE(placed.x(),preferred.x());QVERIFY(placed.y()<preferred.y());
++            for(const auto box:obstacles)QVERIFY(!box.adjusted(-1,-1,1,1).intersects(placed));
++            auto together=obstacles;together.append(placed);
++            const auto second=findPreviewChordBox(preferred,page,together,1);
++            QVERIFY(!second.isEmpty());QCOMPARE(second.x(),preferred.x());QVERIFY(!second.intersects(placed));
++            QVERIFY(findPreviewChordBox(preferred,page,{QRectF(0,0,500,350)},1).isEmpty());
++            }
++
+       void boundedPedalMetadataAndNativeRenderingIsolation()
+             {
+             std::unique_ptr<MasterScore> score(readScore("mscore/scoreobserver/piano.mscx"));
+diff --git a/personal/CHANGELOG.md b/personal/CHANGELOG.md
+index a1cc8c8fb..83d3909e1 100644
+--- a/personal/CHANGELOG.md
++++ b/personal/CHANGELOG.md
+@@ -2,6 +2,19 @@
+ 
+ 个人版本记录本仓库的个人维护增量；应用上游版本另由 `config.cmake` 管理。历史源码提交尚未追溯归类，此处从首次建立指南开始记录，不代表此前没有个人改动。
+ 
++## 0.22.0 — 2026-10-10
++
++- 功能：发布 HarmonyAssistant 1.5.0；参考成熟 DAW 检查器组织方式，插件采用随宿主明暗变化的平面控件、紧凑分区与稳定文本空间。保留顶部定位、共享右侧、悬浮、配置／人工范围／分析交换及功能配色。
++- 密集谱面：用通用矩形空位搜索取代六个固定高度，按原谱及已排记号的实际边界上移，x 始终对应变化 tick；包括高音、速度文字及其他谱表。绝对页面边界不足时 `previewStatus.unplaced` 返回待排 tick／track／文本，插件「记号」列表展示完整识别点并可点击定位，不静默丢失。
++- 解耦：原生生产改动仅 notepreview.h 的纯几何函数及 ScoreObserver 屏幕布局／状态字段；不改模型、保存、排版、音频、P 键盘或选区框，不增加播放避让或动画计时器。主题及交互集中 UiTheme／Desk*／MarkerList，音乐算法未改。
++- 验证：最终 x64 Release 构建／独立安装成功；tst_scoreobserver 17、实际 Windows Qt tst_pluginhost 12 项全部通过，0 失败／跳过。新增六条旧行均冲突但行间有空位、原谱高音＋速度文字、相邻长记号保持 x、超页待排与当前版本标识；原有选色／播放／拖放／P 键盘／选区框／原色清理对照保留。JS 和弦／配置交换／区间、Qt 固定布局／双面板／范围交互、真实明暗控件点击输入和待排列表定位通过。正式安装连续两次启动恢复样式与 Am/C 人工区间；关于／启动画面已目视核对 Kumo branch／Freddd13／v0.22.0。已存在 Qt Connections 弃用、临时工作区缺文件及空文件名警告，不宣称无警告。
++- 测量：1000 小节／6000 音符索引 27.687 ms，1000 缓存快照 1.962 ms，上下文 6.507 ms；数值分析帧 25.139 ms，基础色层定位 22.434 ms；1000 次既有记号索引高亮 0.736 ms，不含绘制。初始几何／字形／检测仍有成本，未将这些数值表述为音频硬实时指标。
++- 文档检查：本次源码锚点已刷新、diff --check 通过；check_guides.py 仍报告 USER_GUIDE 三个原有跨仓库链接（MCP 上下文及字体 README／验证）离开仓库，保留它们且不纳入本任务无关修复。用户／并行说明增量未提交。
++- 证据：独立安装 validation 及插件 tests/native-*-1-5 保存小量日志／截图／启动报告。最初测试复制输出误置于安装目录，改为防递归的目录外隔离助手；原临时副本移到构建目录留存，未删除文件。
++- 基准：任务开始两仓库 ff-only 拉取已最新；继承软件父提交 `3dc1d38c837875befe292c7a73f4eecd82dd03cb`（0.21.0 后字体安装说明），保留用户／并行任务 AGENTS.md 与 USER_GUIDE.md 原有未提交内容；只提交本任务用户说明增量。
++- Git：主题 `fix(harmony): redesign inspector and adapt chord marker placement`；定位 `personal-v0.22.0`。独立安装 `msvc.install_harmony_1_5_x64`，保留 Kumo branch／Freddd13 与由 personal/VERSION 生成的 v0.22.0 标识；不覆盖旧安装。
++- 限制：页面空间有限时仍可待排，列表保留结果；同和弦区间默认仅起点标记。首次索引／布局有成本，实机声卡长时间播放未作为本次验收，不承诺硬实时或零开销。
++
+ ## 0.21.0 — 2026-10-10
+ 
+ - 功能：左右手可伸缩短折线，复用四个SMuFL手符号与Symbol，不增加ElementType；新指法调色板预设默认折线，旧谱仍原字形。检视器横／竖长度、方向、线宽、可选LH/RH保留数字与名称拖动，Shift精调、Esc取消；双击两端点独立调整，原生一次Undo和分谱关联。
+diff --git a/personal/USER_GUIDE.md b/personal/USER_GUIDE.md
+index c765a375f..ac4a049ce 100644
+--- a/personal/USER_GUIDE.md
++++ b/personal/USER_GUIDE.md
+@@ -1,6 +1,6 @@
+ # MuseScore Evolution 个人版本：用户功能说明
+ 
+-当前个人版本 **0.21.0**，Kumo 分支，维护账号 Freddd13。这里说明个人提交带来的可用功能、入口与操作；实现细节和测试数据另见 [开发更新日志](CHANGELOG.md)。以后每次相关功能更新都维护本文件。
++当前个人版本 **0.22.0**，Kumo 分支，维护账号 Freddd13。这里说明个人提交带来的可用功能、入口与操作；实现细节和测试数据另见 [开发更新日志](CHANGELOG.md)。以后每次相关功能更新都维护本文件。
+ 
+ ## 演奏编辑器：先这样开始
+ 
+@@ -228,3 +228,16 @@ MSCX／MSCZ 保存这些参数，音频和 MIDI 使用同一计算。其他版
+ 原生0.17固定宿主测试、原PDF/MSCZ哈希与重建检查见 [验证记录](../../../mcp-musescore/fonts/kumo-engrave/VERIFICATION.md)。发现现有大括号对精确名称Leland有特殊处理：6谱表工程只改字体名称也可能改分页；反事实副本验证确认本工程该差异由括号跨度分支触发。新字形与同样处于私人家族分支的Control对照；不建议为此修改原谱span。
+ 
+ 字体独立版本为0.2.0，源码提交 `Freddd13/mcp-musescore@cccb8d192f463386d411ca60a2e7a2eb78898b6c`（`codex/musescore-evolution`）。本次只更新本体仓库用户说明，不改原生代码、个人软件版本或字体引擎。
++
++## 和声助手 1.5：界面与密集谱面（个人版本 0.22.0）
++
++从「插件 → Harmony Assistant」开启，或先在插件管理器启用 `HarmonyAssistant_MS3.qml`。新安装为 `msvc.install_harmony_1_5_x64/bin/MuseScore3Evo.exe`，旧程序保留；只有新的主程序提供本次自适应避让。
++
++- 界面改为紧凑检查器分区、细分隔线与统一的输入控件，明暗背景跟随主程序；原有功能音配色、记号样式及保存配置保留。顶部左／中／右／自定义位置、右侧共享详情、浮动窗口和稳定的告警／键盘区域均保留。
++- 谱面记号在和弦变化的水平位置显示，遇到高音、速度文字或已有记号时按实际障碍边界向上找空位；不再仅尝试六个固定高度。没有冲突的记号仍在共同基线。
++- 面板「记号」查看当前乐器的全部识别点及起止范围，点击即可定位、高亮并打开详情。页面确实放不下时入口变为「记号 !」，列表显示「待排」；分析仍保留且可导出。
++- 持续同一和弦默认只标在起点；想逐小节提示可开设置中的小节重复。原谱已有和弦／级数按原有优先开关避免重复，可在列表区分无新变化与待排。
++
++限制：预览不增加原谱系统间距、不移动原谱对象，也不写入乐谱或 PDF；极密集／过大字号／页边界无空位仍可能待排。初始避让有成本，播放沿用缓存只切换高亮，不每帧重新排版；不承诺任意工程零开销。仅凭局部截图不能确定某个空白究竟是无新识别点、原谱优先还是待排。
++
++提交定位：`personal-v0.22.0`（原生屏幕避让／状态元数据及插件发布副本），插件源标签 `harmony-v1.5.0`；开发边界见 [观察器说明](docs/10-score-observer.md)。
+diff --git a/personal/VERSION b/personal/VERSION
+index 885415662..215740905 100644
+--- a/personal/VERSION
++++ b/personal/VERSION
+@@ -1 +1 @@
+-0.21.0
++0.22.0
+diff --git a/personal/docs/04-feature-map.md b/personal/docs/04-feature-map.md
+index 5714ddf0c..75dba0b28 100644
+--- a/personal/docs/04-feature-map.md
++++ b/personal/docs/04-feature-map.md
+@@ -139,3 +139,5 @@ Arpeggio 属性/原生读写 → PlaybackTiming 参与音/窗口 → renderArpeg
+ ## 0.21.0 左右手短折线
+ 
+ 指法调色板两个新Symbol预设；仅四个SMuFL手符号允许可伸缩几何。Symbol原生属性／Undo／读写，InspectorHandSymbol数字和名称拖动，两个端点独立调长度；Note和Chord附着，原生绘制用于PDF/SVG，播放不变。详见[钢琴表达](15-piano-expression.md)。
++
++0.22.0 和声界面：UiTheme.qml／Desk*.qml 统一主题，MarkerList.qml 展示全部识别点；notepreview.h::findPreviewChordBox 保持 x 的实际空位搜索，ScoreObserver::applyPreview 返回待排元数据。纯几何及真实高音／速度文字回归见 tst_scoreobserver／tst_pluginhost。
+diff --git a/personal/docs/10-score-observer.md b/personal/docs/10-score-observer.md
+index b957e7ece..687eae328 100644
+--- a/personal/docs/10-score-observer.md
++++ b/personal/docs/10-score-observer.md
+@@ -104,3 +104,11 @@ contextSnapshot 新增每乐器当前踏板窗口、parts、scoreEnd；note desc
+ events.cpp 在 NORMAL、左键且无修饰键命中可见固定记号时激活，双击路径保留；编辑/foto 交还原生操作。ScoreView 音符预览调用原生 curColor(visible,override)，保持选中/播放/拖放/隐藏颜色，不改变 HPiano 或选区框实现。
+ 
+ 插件 Timeline.js 的加权模板、区间/人工覆盖、Preferences.js 新显示模式以及 RangeEditor.qml 与宿主解耦。人工修正由既有配置接口保存，原生不理解其 JSON。schema 2 分析由插件处理，schema 1 兼容。实际回归和部署见 CHANGELOG 0.8.0；接口仍是 GUI 屏幕辅助，首次扫描/避让有成本。
++
++## 0.22.0：实际空位搜索与待排元数据
++
++`findPreviewChordBox` 是只处理矩形的内联纯几何函数：从共同基线出发，每次跳到相交障碍的上沿，至多 obstacleCount+1 轮；保持 x，遇页面边界返回空。applyPreview 一次查询该记号 x 范围内从页顶到基线的 Page 空间索引，收集可见对象／谱线以及已排记号；无需六条采样行和六次空间查询。首次构建仍有代价，播放的有序区间索引、高亮切换与音频回调不变。
++
++`previewStatus` 新增 `unplaced` 数值／文本列表 `{tick,track,chord,degree}`，保留 `hidden` 和 `fontFallback`。清全部预览时重置这些字段，避免切谱沿用旧状态。QML MarkerList 以当前乐器区间为模型，待排不删除识别区间；列表激活复用既有 openAnnotation 路径。原谱优先及区间起点规则不变；页内空间不足仍不覆盖原对象、不移动原谱布局。
++
++UiTheme／DeskButton／DeskSwitch／DeskComboBox／DeskSpinBox／DeskTextField 统一宿主调色板与紧凑控件；RangeEditor 和 ConfigurationEditor 保留现有事件／数据语义。新增纯几何六行间隙回归、实际高音＋速度文字点击定位／密集记号／超页待排回归，以及当前版本关于／启动画面检查。提交定位 personal-v0.22.0；最终测试记录见 CHANGELOG。
+diff --git a/personal/docs/README.md b/personal/docs/README.md
+index 66c4e33b9..21d91d936 100644
+--- a/personal/docs/README.md
++++ b/personal/docs/README.md
+@@ -94,3 +94,5 @@ TSV 包含主题、源码路径、搜索锚点、基准行号、职责与邻近
+ 0.20.1 的键形／柱宽／谱行双向选音修复见 [14](14-performance-editor.md)；内含 0.20 自由圆滑线。
+ 
+ 0.21.0 左右手可伸缩折线的模型、检视器、调色板和验证入口见[钢琴表达](15-piano-expression.md)；七项钢琴计划已分别实现，实际验收范围与限制以[个人日志](../CHANGELOG.md)为准。
++
++0.22.0 和声助手 1.5 的紧凑界面、实际空位避让与待排列表见 [用户说明](../USER_GUIDE.md) 和 [10 观察器](10-score-observer.md)；继承最新 0.21.0 的其他功能。
+diff --git a/personal/docs/source-map.tsv b/personal/docs/source-map.tsv
+index ce575669c..4896deaba 100644
+--- a/personal/docs/source-map.tsv
++++ b/personal/docs/source-map.tsv
+@@ -78,12 +78,12 @@ MIDI左右手拆分	importexport/midiimport/importmidi_lrhand.h	void splitIntoLe
+ 插件实时观察	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::ScoreObserver(	51	GUI 心跳与生命周期；不修改音频回调	mtest/mscore/scoreobserver
+ 持续音缓存	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::ensureIndex(	157	内容状态/范围失效，每声部二分持续音	mtest/mscore/scoreobserver
+ 屏幕临时音符颜色	mscore/scoreview.cpp	void ScoreView::setNotePreviewColors(	5749	按 owner 隔离的屏幕色层，旧新局部重绘	mtest/mscore/scoreobserver
+-和声辅助插件	share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml	    function followNativePosition()	908	插件音乐解释、级数、功能音和 GUI 播放合并	mtest/mscore/scoreobserver
++和声辅助插件	share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml	    function followNativePosition()	918	插件音乐解释、级数、功能音和 GUI 播放合并	mtest/mscore/scoreobserver
+ 踏板/琶音上下文	mscore/plugin/api/scoreobserver.cpp	QVariantMap ScoreObserver::contextSnapshot(	328	即时音/上下文分离，小节/休止/踏板边界	mtest/mscore/scoreobserver
+ 谱面屏幕标注	mscore/plugin/api/scoreobserver.cpp	void ScoreObserver::applyPreview(	408	独立和声变化标记、原谱优先与两层避让	mtest/mscore/pluginhost
+ 插件停靠状态	mscore/plugin/qmlplugin.cpp	void QmlPlugin::attachPanelDock(	33	实际区域/悬浮通知，可选横条高度	mtest/mscore/pluginhost
+-插件菜单/析构回归	mtest/mscore/pluginhost/tst_pluginhost.cpp	class TestPluginHost	39	真实 Qt 主窗口、菜单、重排和停靠	mtest/mscore/pluginhost
+-plugin-preview	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::setActiveScorePreview	587	固定区间高亮，不复制全谱色表	mtest/mscore/pluginhost/tst_pluginhost.cpp
++插件菜单/析构回归	mtest/mscore/pluginhost/tst_pluginhost.cpp	class TestPluginHost	43	真实 Qt 主窗口、菜单、重排和停靠	mtest/mscore/pluginhost
++plugin-preview	mscore/plugin/api/scoreobserver.cpp	ScoreObserver::setActiveScorePreview	593	固定区间高亮，不复制全谱色表	mtest/mscore/pluginhost/tst_pluginhost.cpp
+ plugin-preview	mscore/scoreview.cpp	ScoreView::activateNotePreview	5769	固定记号点击命中与弱目标转发	mtest/mscore/pluginhost/tst_pluginhost.cpp
+ plugin-preview	mscore/plugin/qmlplugin.cpp	QmlPlugin::focusPanel	53	聚焦已有插件窗口，保留停靠状态	mtest/mscore/pluginhost/tst_pluginhost.cpp
+ plugin-display	mscore/plugin/api/scoreobserver.cpp	static qreal previewTickX	392	变化节拍定位，无新音时插值	mtest/mscore/pluginhost/tst_pluginhost.cpp
+@@ -105,7 +105,7 @@ restored-rhythm-menu	mscore/musescore.cpp	void MuseScore::updateMenus()	2742	Res
+ text-font-fallback	libmscore/textbase.cpp	QFont TextFragment::font(	851	ScoreText music font vs ordinary Qt font merging	mtest/libmscore/text
+ music-text-fallback	libmscore/sym.cpp	const char* ScoreFont::fallbackTextFont()	7156	Bravura Text fallback; not CJK title fallback	-
+ harmony-regions	share/plugins/HarmonyAssistant/Timeline.js	function createBuilder	47	Numeric interval builder and manual overlays	mtest/mscore/scoreobserver
+-harmony-range-editing	share/plugins/HarmonyAssistant/RangeEditor.qml	"objectName:""harmonyRangeEditor"""	7	Range handles, ticks and independent history	mtest/mscore/pluginhost
++harmony-range-editing	share/plugins/HarmonyAssistant/RangeEditor.qml	"objectName:""harmonyRangeEditor"""	8	Range handles, ticks and independent history	mtest/mscore/pluginhost
+ 演奏界面	mscore/performanceeditor/performanceeditor.cpp	PerformanceEditor::PerformanceEditor	57	独立停靠参数面板	mtest/mscore/performanceeditor
+ 演奏快照	mscore/performanceeditor/performanceeditor.cpp	void PerformanceEditor::refresh()	336	内容快照/独立布局修复/原生选择同步	mtest/mscore/performanceeditor
+ 谱面演奏编辑	mscore/performanceeditor/performanceoverlay.cpp	void PerformanceEditor::paintOverlay	155	谱面浮动带/双向音符提示/播放和鼠标线	mtest/mscore/performanceeditor
+@@ -177,3 +177,6 @@ hand-bracket-geometry	libmscore/symbol.cpp	QPainterPath Symbol::handPath	106	Opt
+ hand-bracket-grips	libmscore/symbol.cpp	void Symbol::startEditDrag	154	Native Undo and cancellable endpoint preview	mtest/mscore/performanceeditor/handsymbol_tests.inc
+ hand-bracket-inspector	mscore/inspector/inspector.cpp	InspectorHandSymbol::InspectorHandSymbol	1434	Numeric scrubbing and safe property submission	mtest/mscore/performanceeditor/handsymbol_tests.inc
+ hand-bracket-hit	mscore/scoreview.cpp	QList<Element*> ScoreView::elementsNear	5512	Prefer directly hit hand child over its Note/Chord container	mtest/mscore/performanceeditor/handsymbol_tests.inc
++和弦空位搜索	mscore/notepreview.h	inline QRectF findPreviewChordBox	109	保持 x；按障碍上沿查空隙，页面有限边界	mtest/mscore/pluginhost
++和弦识别点列表	share/plugins/HarmonyAssistant/MarkerList.qml	ColumnLayout {	5	完整当前乐器区间及待排；点击定位	mtest/mscore/pluginhost
++和声宿主主题	share/plugins/HarmonyAssistant/UiTheme.qml	QtObject {	3	明暗系统调色板与统一紧凑控件	mtest/mscore/pluginhost
+diff --git a/share/plugins/HarmonyAssistant/AppearanceEditor.qml b/share/plugins/HarmonyAssistant/AppearanceEditor.qml
+index d418891ae..981ae2531 100644
+--- a/share/plugins/HarmonyAssistant/AppearanceEditor.qml
++++ b/share/plugins/HarmonyAssistant/AppearanceEditor.qml
+@@ -5,6 +5,7 @@ import "Preferences.js" as Preferences
+ 
+ Column {
+     id:editor
++    UiTheme {id:theme}
+     property var configuration:Preferences.defaults()
+     signal modified(var configuration)
+     signal chooseColor(string key,string color)
+@@ -14,59 +15,59 @@ Column {
+         next[key]=value
+         modified(Preferences.clean(next))
+     }
+-    UiLabel {text:"显示位置与谱面记号"; font.bold:true; color:"#343a3f"; font.pixelSize:13}
++    UiLabel {text:"显示位置与谱面记号"; font.bold:true; color:theme.text; font.pixelSize:13}
+     RowLayout {width:parent.width
+-        UiLabel {text:"顶部主和弦";color:"#697077";font.pixelSize:11}
+-        ComboBox {model:["实时结果","所属和弦"];currentIndex:configuration.summaryMode;Layout.fillWidth:true;onActivated:editor.option("summaryMode",currentIndex)}
++        UiLabel {text:"顶部主和弦";color:theme.muted;font.pixelSize:11}
++        DeskComboBox {model:["实时结果","所属和弦"];currentIndex:configuration.summaryMode;Layout.fillWidth:true;onActivated:editor.option("summaryMode",currentIndex)}
+     }
+     RowLayout {width:parent.width
+-        UiLabel {text:"侧边主和弦";color:"#697077";font.pixelSize:11}
+-        ComboBox {model:["实时结果","所属和弦"];currentIndex:configuration.detailMode;Layout.fillWidth:true;onActivated:editor.option("detailMode",currentIndex)}
++        UiLabel {text:"侧边主和弦";color:theme.muted;font.pixelSize:11}
++        DeskComboBox {model:["实时结果","所属和弦"];currentIndex:configuration.detailMode;Layout.fillWidth:true;onActivated:editor.option("detailMode",currentIndex)}
+     }
+-    Switch {text:"顶部摘要同时显示右侧详情"; checked:configuration.dualPanel; onToggled:if(checked!==configuration.dualPanel)editor.option("dualPanel",checked)}
++    DeskSwitch {text:"顶部摘要同时显示右侧详情"; checked:configuration.dualPanel; onToggled:if(checked!==configuration.dualPanel)editor.option("dualPanel",checked)}
+     RowLayout {
+         width:parent.width
+-        UiLabel {text:"顶栏位置"; color:"#697077"; font.pixelSize:11}
+-        ComboBox {model:["靠左","居中","靠右","自定位置"]; currentIndex:configuration.ribbonAlign; Layout.fillWidth:true; implicitHeight:32; onActivated:editor.option("ribbonAlign",currentIndex)}
++        UiLabel {text:"顶栏位置"; color:theme.muted; font.pixelSize:11}
++        DeskComboBox {model:["靠左","居中","靠右","自定位置"]; currentIndex:configuration.ribbonAlign; Layout.fillWidth:true; implicitHeight:28; onActivated:editor.option("ribbonAlign",currentIndex)}
+     }
+     RowLayout {
+         width:parent.width; visible:configuration.ribbonAlign===3
+-        UiLabel {text:"横向位置 %"; Layout.fillWidth:true; color:"#697077"; font.pixelSize:11}
+-        SpinBox {from:0; to:100; value:configuration.ribbonPosition; editable:true; implicitHeight:32; onValueModified:editor.option("ribbonPosition",value)}
++        UiLabel {text:"横向位置 %"; Layout.fillWidth:true; color:theme.muted; font.pixelSize:11}
++        DeskSpinBox {from:0; to:100; value:configuration.ribbonPosition; editable:true; implicitHeight:28; onValueModified:editor.option("ribbonPosition",value)}
+     }
+     RowLayout {
+         width:parent.width
+-        UiLabel {text:"记号内容"; color:"#697077"; font.pixelSize:11}
+-        ComboBox {model:["仅和弦","仅级数","和弦与级数"]; currentIndex:configuration.chordContent; Layout.fillWidth:true; implicitHeight:32; onActivated:editor.option("chordContent",currentIndex)}
++        UiLabel {text:"记号内容"; color:theme.muted; font.pixelSize:11}
++        DeskComboBox {model:["仅和弦","仅级数","和弦与级数"]; currentIndex:configuration.chordContent; Layout.fillWidth:true; implicitHeight:28; onActivated:editor.option("chordContent",currentIndex)}
+     }
+     RowLayout {
+         width:parent.width
+-        UiLabel {text:"组合排列"; color:"#697077"; font.pixelSize:11}
+-        ComboBox {model:["和弦 → 级数","级数 → 和弦","和弦在上","级数在上"]; currentIndex:configuration.chordOrder; enabled:configuration.chordContent===2; Layout.fillWidth:true; implicitHeight:32; onActivated:editor.option("chordOrder",currentIndex)}
++        UiLabel {text:"组合排列"; color:theme.muted; font.pixelSize:11}
++        DeskComboBox {model:["和弦 → 级数","级数 → 和弦","和弦在上","级数在上"]; currentIndex:configuration.chordOrder; enabled:configuration.chordContent===2; Layout.fillWidth:true; implicitHeight:28; onActivated:editor.option("chordOrder",currentIndex)}
+     }
+     RowLayout {
+         width:parent.width
+-        UiLabel {text:"记号字体"; color:"#697077"; font.pixelSize:11}
+-        ComboBox {model:["跟随谱面和弦字体","Edwin","Arial"]; currentIndex:configuration.chordFont; Layout.fillWidth:true; implicitHeight:32; onActivated:editor.option("chordFont",currentIndex)}
++        UiLabel {text:"记号字体"; color:theme.muted; font.pixelSize:11}
++        DeskComboBox {model:["跟随谱面和弦字体","Edwin","Arial"]; currentIndex:configuration.chordFont; Layout.fillWidth:true; implicitHeight:28; onActivated:editor.option("chordFont",currentIndex)}
+     }
+     RowLayout {
+         width:parent.width
+-        UiLabel {text:"记号大小 %"; Layout.fillWidth:true; color:"#697077"; font.pixelSize:11}
+-        SpinBox {from:60; to:200; stepSize:10; value:configuration.chordScale; editable:true; implicitHeight:32; onValueModified:editor.option("chordScale",value)}
++        UiLabel {text:"记号大小 %"; Layout.fillWidth:true; color:theme.muted; font.pixelSize:11}
++        DeskSpinBox {from:60; to:200; stepSize:10; value:configuration.chordScale; editable:true; implicitHeight:28; onValueModified:editor.option("chordScale",value)}
+     }
+     Repeater {
+         model:[{key:"chordColor",name:"记号颜色"},{key:"highlightColor",name:"高亮文字"},{key:"highlightBackground",name:"高亮背景"},{key:"chromaticColor",name:"离调强调"}]
+         ColorOption {width:parent.width; caption:modelData.name; value:configuration[modelData.key]; onEdited:editor.option(modelData.key,color); onChooseRequested:editor.chooseColor(modelData.key,value)}
+     }
+-    Switch {text:"优先保留原谱和弦 / 级数"; checked:configuration.respectExistingHarmony; onToggled:if(checked!==configuration.respectExistingHarmony)editor.option("respectExistingHarmony",checked)}
+-    Switch {text:"记号背景遮罩"; checked:configuration.chordMask; onToggled:if(checked!==configuration.chordMask)editor.option("chordMask",checked)}
+-    Switch {text:"小节开头重述所属和弦";checked:configuration.repeatBars;onToggled:if(checked!==configuration.repeatBars)editor.option("repeatBars",checked)}
++    DeskSwitch {text:"优先保留原谱和弦 / 级数"; checked:configuration.respectExistingHarmony; onToggled:if(checked!==configuration.respectExistingHarmony)editor.option("respectExistingHarmony",checked)}
++    DeskSwitch {text:"记号背景遮罩"; checked:configuration.chordMask; onToggled:if(checked!==configuration.chordMask)editor.option("chordMask",checked)}
++    DeskSwitch {text:"小节开头重述所属和弦";checked:configuration.repeatBars;onToggled:if(checked!==configuration.repeatBars)editor.option("repeatBars",checked)}
+     RowLayout {width:parent.width
+-        UiLabel {text:"级数字体";color:"#697077";font.pixelSize:11}
++        UiLabel {text:"级数字体";color:theme.muted;font.pixelSize:11}
+         TextField {text:configuration.degreeFont;Layout.fillWidth:true;maximumLength:64;onEditingFinished:if(text.trim().length)editor.option("degreeFont",text.trim())}
+     }
+-    UiLabel {width:parent.width; text:"记号对齐和弦变化的时间位置；关闭遮罩后只显示文字，仍避让原谱，当前记号以文字色高亮。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
+-    UiLabel {width:parent.width; text:"同位置已有原谱和弦时，分析留在面板，谱面只补充级数；已有罗马级数时只补充和弦。关闭可同时显示，仍会避让。编辑框始终优先。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
+-    Switch {text:"强调含调外音的和弦"; checked:configuration.chromaticAccent; onToggled:if(checked!==configuration.chromaticAccent)editor.option("chromaticAccent",checked)}
+-    UiLabel {width:parent.width; text:"小调兼容属和弦及导音和弦；强调色表示模板含调外音，不代表唯一和声解释。记号在同一系统统一高度，过密时省略；双击可跳转面板。"; color:"#697077"; font.pixelSize:10; wrapMode:Text.Wrap}
++    UiLabel {width:parent.width; text:"记号对齐和弦变化的时间位置；关闭遮罩后只显示文字，仍避让原谱，当前记号以文字色高亮。"; color:theme.muted; font.pixelSize:10; wrapMode:Text.Wrap}
++    UiLabel {width:parent.width; text:"同位置已有原谱和弦时，分析留在面板，谱面只补充级数；已有罗马级数时只补充和弦。关闭可同时显示，仍会避让。编辑框始终优先。"; color:theme.muted; font.pixelSize:10; wrapMode:Text.Wrap}
++    DeskSwitch {text:"强调含调外音的和弦"; checked:configuration.chromaticAccent; onToggled:if(checked!==configuration.chromaticAccent)editor.option("chromaticAccent",checked)}
++    UiLabel {width:parent.width; text:"小调兼容属和弦及导音和弦；强调色表示模板含调外音，不代表唯一和声解释。记号在同一系统统一高度，过密时省略；双击可跳转面板。"; color:theme.muted; font.pixelSize:10; wrapMode:Text.Wrap}
+ }
+diff --git a/share/plugins/HarmonyAssistant/ColorOption.qml b/share/plugins/HarmonyAssistant/ColorOption.qml
+index 2a46042ed..ea1f0d638 100644
+--- a/share/plugins/HarmonyAssistant/ColorOption.qml
++++ b/share/plugins/HarmonyAssistant/ColorOption.qml
+@@ -4,16 +4,17 @@ import QtQuick.Layouts 1.3
+ 
+ RowLayout {
+     id:row
++    UiTheme {id:theme}
+     property string caption
+     property string value
+     signal edited(string color)
+     signal chooseRequested()
+     spacing:6
+     Rectangle {
+-        width:24; height:24; radius:4; color:row.value; border.color:"#c6c6c6"
++        width:24; height:24; radius:4; color:row.value; border.color:theme.line
+         MouseArea {anchors.fill:parent; cursorShape:Qt.PointingHandCursor; onClicked:row.chooseRequested()}
+     }
+-    UiLabel {text:row.caption; Layout.preferredWidth:58; color:"#343a3f"; font.pixelSize:11}
+-    TextField {text:row.value; Layout.fillWidth:true; Layout.minimumWidth:64; implicitHeight:32; font.pixelSize:11; maximumLength:7; onEditingFinished:row.edited(text)}
+-    Button {text:"选色"; implicitHeight:32; implicitWidth:48; font.pixelSize:11; onClicked:row.chooseRequested()}
++    UiLabel {text:row.caption; Layout.preferredWidth:58; color:theme.text; font.pixelSize:11}
++    DeskTextField {text:row.value; Layout.fillWidth:true; Layout.minimumWidth:64; implicitHeight:28; font.pixelSize:11; maximumLength:7; onEditingFinished:row.edited(text)}
++    DeskButton {text:"选色"; implicitHeight:28; implicitWidth:48; font.pixelSize:11; onClicked:row.chooseRequested()}
+ }
+diff --git a/share/plugins/HarmonyAssistant/ConfigurationEditor.qml b/share/plugins/HarmonyAssistant/ConfigurationEditor.qml
+index f7f346630..f9db3a058 100644
+--- a/share/plugins/HarmonyAssistant/ConfigurationEditor.qml
++++ b/share/plugins/HarmonyAssistant/ConfigurationEditor.qml
+@@ -6,6 +6,7 @@ import "Preferences.js" as Preferences
+ 
+ Column {
+     id:editor
++    UiTheme {id:theme}
+     objectName:"harmonyConfiguration"
+     property var configuration: Preferences.defaults()
+     signal modified(var configuration)
+@@ -28,45 +29,45 @@ Column {
+         onModified:editor.modified(configuration)
+         onChooseColor:editor.openColor("",key,color)
+     }
+-    Rectangle {width:parent.width; height:1; color:"#e0e0e0"}
++    Rectangle {width:parent.width; height:1; color:theme.subtleLine}
+     RowLayout {
+         width:parent.width
+-        UiLabel { text:"功能色方案"; Layout.fillWidth:true; font.bold:true; color:"#343a3f" }
+-        ComboBox {
+-            model:["Carbon","柔和","单色"]; implicitHeight:32; Layout.preferredWidth:104
++        UiLabel { text:"功能色方案"; Layout.fillWidth:true; font.bold:true; color:theme.text }
++        DeskComboBox {
++            model:["Carbon","柔和","单色"]; implicitHeight:28; Layout.preferredWidth:104
+             currentIndex:model.indexOf(configuration.palette)
+             onActivated:modified(Preferences.preset(configuration,model[currentIndex]))
+         }
+     }
+-    UiLabel { width:parent.width; text:"点击色块或「选色」打开选色器，也可填写 #RRGGBB。"; color:"#697077"; font.pixelSize:11; wrapMode:Text.Wrap }
++    UiLabel { width:parent.width; text:"点击色块或「选色」打开选色器，也可填写 #RRGGBB。"; color:theme.muted; font.pixelSize:11; wrapMode:Text.Wrap }
+     Repeater {
+         model:Preferences.roles
+         ColorOption {width:parent.width; caption:modelData; value:configuration.colors[modelData]; onEdited:editor.change("colors",modelData,color); onChooseRequested:editor.openColor("colors",modelData,value)}
+     }
+-    UiLabel { text:"音旁文字（留空可隐藏该功能）"; font.bold:true; color:"#343a3f"; font.pixelSize:12 }
++    UiLabel { text:"音旁文字（留空可隐藏该功能）"; font.bold:true; color:theme.text; font.pixelSize:12 }
+     Repeater {
+         model:Preferences.labels
+         RowLayout {
+             width:parent.width
+-            UiLabel { text:modelData; Layout.preferredWidth:36; color:"#697077" }
+-            TextField {
+-                Layout.fillWidth:true; implicitHeight:30; font.pixelSize:12; maximumLength:24
++            UiLabel { text:modelData; Layout.preferredWidth:36; color:theme.muted }
++            DeskTextField {
++                Layout.fillWidth:true; maximumLength:24
+                 text:configuration.labels[modelData]
+                 onEditingFinished:change("labels",modelData,text)
+             }
+         }
+     }
+-    Button { id:fixedPitch; text:checked?"收起固定音名覆盖":"固定音名覆盖（可选）"; checkable:true; implicitHeight:32 }
++    DeskButton { id:fixedPitch; text:checked?"收起固定音名覆盖":"固定音名覆盖（可选）"; checkable:true; implicitHeight:28 }
+     Column {
+         width:parent.width; visible:fixedPitch.checked; spacing:6
+-        UiLabel {width:parent.width; text:"按十二音级指定文字；留空沿用和弦功能名。"; color:"#697077"; font.pixelSize:11; wrapMode:Text.Wrap}
++        UiLabel {width:parent.width; text:"按十二音级指定文字；留空沿用和弦功能名。"; color:theme.muted; font.pixelSize:11; wrapMode:Text.Wrap}
+         Repeater {
+             model:["C","C♯ / D♭","D","D♯ / E♭","E","F","F♯ / G♭","G","G♯ / A♭","A","A♯ / B♭","B"]
+             RowLayout {
+                 width:parent.width
+-                UiLabel {text:modelData; Layout.preferredWidth:66; color:"#697077"; font.pixelSize:11}
+-                TextField {
+-                    Layout.fillWidth:true; implicitHeight:30; maximumLength:24; font.pixelSize:12
++                UiLabel {text:modelData; Layout.preferredWidth:66; color:theme.muted; font.pixelSize:11}
++                DeskTextField {
++                    Layout.fillWidth:true; maximumLength:24
+                     text:configuration.noteLabels[index] || ""; placeholderText:"沿用功能名"
+                     onEditingFinished:change("noteLabels",index,text)
+                 }
+diff --git a/share/plugins/HarmonyAssistant/DeskButton.qml b/share/plugins/HarmonyAssistant/DeskButton.qml
+new file mode 100644
+index 000000000..862295461
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/DeskButton.qml
+@@ -0,0 +1,24 @@
++import QtQuick 2.9
++import QtQuick.Controls 2.2 as Controls
++
++Controls.Button {
++    id:control
++    UiTheme {id:theme}
++    implicitHeight:flat ? 26 : 28
++    implicitWidth:Math.max(flat ? 34 : 56,contentItem.implicitWidth+18)
++    padding:5
++    font.family:theme.fontFamily
++    font.pixelSize:11
++    opacity:enabled ? 1 : 0.45
++    contentItem:Text {
++        text:control.text;font:control.font;elide:Text.ElideRight
++        horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter
++        color:control.checked ? theme.accentText : theme.text
++    }
++    background:Rectangle {
++        radius:2
++        color:control.checked ? theme.accent : control.down || control.hovered ? theme.hover : control.flat ? "transparent" : theme.section
++        border.width:control.flat && !control.hovered && !control.activeFocus ? 0 : 1
++        border.color:control.activeFocus ? theme.accent : theme.line
++    }
++}
+diff --git a/share/plugins/HarmonyAssistant/DeskComboBox.qml b/share/plugins/HarmonyAssistant/DeskComboBox.qml
+new file mode 100644
+index 000000000..d2cd3fda4
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/DeskComboBox.qml
+@@ -0,0 +1,35 @@
++import QtQuick 2.9
++import QtQuick.Controls 2.2 as Controls
++
++Controls.ComboBox {
++    id:control
++    UiTheme {id:theme}
++    implicitHeight:28;implicitWidth:120
++    leftPadding:7;rightPadding:23
++    font.family:theme.fontFamily;font.pixelSize:11
++    opacity:enabled ? 1 : 0.45
++    contentItem:Text {
++        text:control.displayText;font:control.font;color:theme.text
++        verticalAlignment:Text.AlignVCenter;elide:Text.ElideRight
++    }
++    indicator:Text {x:control.width-width-8;y:(control.height-height)/2;text:"▾";color:theme.muted;font.pixelSize:12}
++    background:Rectangle {color:theme.field;radius:2;border.color:control.activeFocus ? theme.accent : theme.line}
++    delegate:Controls.ItemDelegate {
++        width:control.width;height:28
++        text:control.textRole ? modelData[control.textRole] : modelData
++        font:control.font;highlighted:control.highlightedIndex===index
++        contentItem:Text {text:parent.text;font:control.font;color:theme.text;verticalAlignment:Text.AlignVCenter;elide:Text.ElideRight}
++        background:Rectangle {color:parent.highlighted ? theme.selected : theme.field}
++    }
++    popup:Controls.Popup {
++        y:control.height-1;width:control.width;padding:1
++        implicitHeight:Math.min(260,contentItem.implicitHeight+2)
++        contentItem:ListView {
++            clip:true;implicitHeight:contentHeight
++            model:control.popup.visible ? control.delegateModel : null
++            currentIndex:control.highlightedIndex
++            Controls.ScrollIndicator.vertical:Controls.ScrollIndicator {}
++        }
++        background:Rectangle {color:theme.field;border.color:theme.line;radius:2}
++    }
++}
+diff --git a/share/plugins/HarmonyAssistant/DeskSpinBox.qml b/share/plugins/HarmonyAssistant/DeskSpinBox.qml
+new file mode 100644
+index 000000000..3a9bc93b9
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/DeskSpinBox.qml
+@@ -0,0 +1,28 @@
++import QtQuick 2.9
++import QtQuick.Controls 2.2 as Controls
++
++Controls.SpinBox {
++    id:control
++    UiTheme {id:theme}
++    implicitHeight:28;implicitWidth:92
++    leftPadding:6;rightPadding:23
++    font.family:theme.fontFamily;font.pixelSize:11
++    opacity:enabled ? 1 : 0.45
++    contentItem:TextInput {
++        text:control.textFromValue(control.value,control.locale)
++        font:control.font;color:theme.text;selectionColor:theme.accent;selectedTextColor:theme.accentText
++        horizontalAlignment:Text.AlignLeft;verticalAlignment:Text.AlignVCenter
++        readOnly:!control.editable;validator:control.validator;inputMethodHints:Qt.ImhFormattedNumbersOnly
++    }
++    up.indicator:Rectangle {
++        x:control.width-width;y:0;width:20;height:control.height/2
++        color:control.up.pressed ? theme.selected : control.up.hovered ? theme.hover : theme.section
++        Text {anchors.centerIn:parent;text:"+";color:theme.text;font.pixelSize:10}
++    }
++    down.indicator:Rectangle {
++        x:control.width-width;y:control.height/2;width:20;height:control.height/2
++        color:control.down.pressed ? theme.selected : control.down.hovered ? theme.hover : theme.section
++        Text {anchors.centerIn:parent;text:"−";color:theme.text;font.pixelSize:10}
++    }
++    background:Rectangle {color:theme.field;radius:2;border.color:control.activeFocus ? theme.accent : theme.line}
++}
+diff --git a/share/plugins/HarmonyAssistant/DeskSwitch.qml b/share/plugins/HarmonyAssistant/DeskSwitch.qml
+new file mode 100644
+index 000000000..bb765e8c0
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/DeskSwitch.qml
+@@ -0,0 +1,22 @@
++import QtQuick 2.9
++import QtQuick.Controls 2.2 as Controls
++
++Controls.Switch {
++    id:control
++    UiTheme {id:theme}
++    implicitHeight:28
++    spacing:8;padding:2;leftPadding:2;rightPadding:2
++    font.family:theme.fontFamily;font.pixelSize:12
++    opacity:enabled ? 1 : 0.45
++    indicator:Rectangle {
++        x:control.leftPadding;y:(control.height-height)/2;width:15;height:15;radius:2
++        color:control.checked ? theme.accent : theme.field
++        border.color:control.activeFocus ? theme.accent : theme.line
++        Text {anchors.centerIn:parent;text:control.checked ? "✓" : "";color:theme.accentText;font.pixelSize:12}
++    }
++    contentItem:Text {
++        text:control.text;font:control.font;color:theme.text
++        leftPadding:control.indicator.width+control.spacing
++        verticalAlignment:Text.AlignVCenter;elide:Text.ElideRight
++    }
++}
+diff --git a/share/plugins/HarmonyAssistant/DeskTextField.qml b/share/plugins/HarmonyAssistant/DeskTextField.qml
+new file mode 100644
+index 000000000..bf1488be9
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/DeskTextField.qml
+@@ -0,0 +1,14 @@
++import QtQuick 2.9
++import QtQuick.Controls 2.2 as Controls
++
++Controls.TextField {
++    id:control
++    UiTheme {id:theme}
++    implicitHeight:28
++    font.family:theme.fontFamily;font.pixelSize:11
++    color:theme.text;selectionColor:theme.accent;selectedTextColor:theme.accentText
++    placeholderTextColor:theme.muted
++    leftPadding:6;rightPadding:6
++    opacity:enabled ? 1 : 0.45
++    background:Rectangle {color:theme.field;radius:2;border.color:control.activeFocus ? theme.accent : theme.line}
++}
+diff --git a/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml b/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
+index b5553a272..6dfc72ce5 100644
+--- a/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
++++ b/share/plugins/HarmonyAssistant/HarmonyAssistant_MS3.qml
+@@ -11,9 +11,10 @@ import QtQuick.Window 2.2
+ 
+ MuseScore {
+     id: root
++    UiTheme {id:theme}
+     menuPath: "Plugins.Harmony Assistant"
+     description: "钢琴和声助手：持续音识别、级数、音程功能与可选谱面配色。"
+-    version: "1.4.0"
++    version: "1.5.0"
+     requiresScore: true
+     pluginType: "dock"
+     dockArea: "right"
+@@ -35,6 +36,8 @@ MuseScore {
+     property var analysisRegions: []
+     property var automaticRegions: []
+     property var regionBuilder: null
++    property var unplacedMarkers: []
++    property var unplacedIndex: ({})
+     property var manualOverrides: []
+     property var editUndo: []
+     property var editRedo: []
+@@ -65,7 +68,7 @@ MuseScore {
+     property string pendingExport: ""
+     property int preferredRibbonHeight: 140
+     property string detailPanelTitle:"和声助手 · 详细面板"
+-    property color detailPanelBackground:"#f4f4f4"
++    property color detailPanelBackground:theme.background
+     property bool started: false
+     property var observer: null
+     property bool surfaceActive: visible && (!observer || observer.surfaceVisible)
+@@ -107,8 +110,9 @@ MuseScore {
+     property string scopeText: "当前乐器 · 包含全部声部"
+     property string positionText: "等待选区"
+     property string noticeText: ""
+-    property color ink: "#253342"
+-    property color muted: "#6B7785"
++    property string placementNotice: ""
++    property color ink: theme.text
++    property color muted: theme.muted
+     property var qualityNames: Harmony.defs.map(function(d) { return d.name })
+ 
+     function windowTicks() {return [0,240,480,960,1920][arpeggioWindow.currentIndex] || 0}
+@@ -397,8 +401,11 @@ MuseScore {
+         observer.clearNotePreviewColors();repaintNotes()
+         if(typeof observer.previewStatus==="function") {
+             var status=observer.previewStatus()
+-            if(status.hidden>0)noticeText=status.hidden+" 个记号空间不足；分析及范围编辑仍可查看。"
+-            else if(status.fontFallback)noticeText="记号字体缺失，已回退到 "+status.fontFallback
++            unplacedMarkers=status.unplaced || []
++            var unavailable={}
++            for(var u=0;u<unplacedMarkers.length;++u)unavailable[unplacedMarkers[u].track+":"+unplacedMarkers[u].tick]=true
++            unplacedIndex=unavailable
++            placementNotice=status.hidden>0 ? status.hidden+" 个记号待排：点击面板「记号」查看并定位。" : status.fontFallback ? "记号字体缺失，已回退到 "+status.fontFallback : ""
+         }
+     }
+     function prepareExport(action) {
+@@ -525,6 +532,7 @@ MuseScore {
+         timeline = []
+         analysisTimer.stop()
+         manualOverrides=[];editUndo=[];editRedo=[];analysisRegions=[];automaticRegions=[];regionBuilder=null;loadedFingerprint="";manualNeedsReview=false;annotationTick=-1
++        unplacedMarkers=[];unplacedIndex=({});placementNotice=""
+         importedRecords = []
+         importedRegions = []
+         analysisRecords = []
+@@ -562,6 +570,7 @@ MuseScore {
+             analysisDirty = true
+             regionBuilder = null
+             if (advancedNative) observer.clearAllPreviews()
++            unplacedMarkers=[];unplacedIndex=({});placementNotice=""
+             if (importedRecords.length || importedRegions.length) {importedRecords=[];importedRegions=[]; noticeText="乐谱已变更，已退出导入结果；请重新分析。"}
+         }
+         if (surfaceActive) refreshTimer.restart()
+@@ -582,6 +591,7 @@ MuseScore {
+         if (oldFirst !== firstTrack || oldEnd !== endTrack) {
+             saveCorrections();manualOverrides=[];editUndo=[];editRedo=[];loadedFingerprint="";manualNeedsReview=false
+             analysisRegions=[];automaticRegions=[];regionBuilder=null;cacheDirty=true;analysisDirty=true;importedRecords=[];importedRegions=[];annotationTick=-1
++            unplacedMarkers=[];unplacedIndex=({});placementNotice=""
+             if(advancedNative)observer.setScorePreview([])
+         }
+         if(annotationSelectionKey.length && annotationSelectionKey===location.tick+":"+location.track && annotationTick>=0)location.tick=annotationTick
+@@ -951,12 +961,12 @@ MuseScore {
+     onVisibleChanged: {
+         if (!started) return
+         if (observer) observer.enabled = visible
+-        if (!visible) {buildTimer.stop(); restoreColors()}
++        if (!visible) {buildTimer.stop(); restoreColors();markerWindow.hide()}
+         else requestRefresh(true)
+     }
+     onSurfaceActiveChanged: {
+         if (!started) return
+-        if (!surfaceActive) {refreshTimer.stop(); playbackTimer.stop(); buildTimer.stop(); analysisTimer.stop()}
++        if (!surfaceActive) {refreshTimer.stop(); playbackTimer.stop(); buildTimer.stop(); analysisTimer.stop();markerWindow.hide()}
+         else if(advancedNative) {analysisDirty=true; scheduleAnalysis()}
+         if (surfaceActive) {followNativePosition(); requestRefresh(false)}
+     }
+@@ -965,6 +975,17 @@ MuseScore {
+     Timer {id:configurationTimer; interval:350; onTriggered:savePreferences()}
+     Timer {id:analysisTimer; interval:12; onTriggered:buildAnalysisChunk()}
+     Loader {id:settingsStore; active:false; source:"SettingsStore.qml"; onLoaded:{if(item.payload.length){try{applyPreferences(JSON.parse(item.payload))}catch(error){noticeText="配置未读取："+error}}}}
++    Window {
++        id:markerWindow;objectName:"harmonyMarkerWindow"
++        width:360;height:430;minimumWidth:260;minimumHeight:220
++        visible:false;flags:Qt.Tool;title:"和声助手 · 识别点";color:theme.background
++        MarkerList {
++            anchors.fill:parent;anchors.margins:10
++            regions:markerWindow.visible ? root.analysisRegions.filter(function(r){return r.part===root.focusedPart}) : []
++            unplaced:root.unplacedIndex;tick:root.currentTick
++            onActivated:root.openAnnotation(tick,part)
++        }
++    }
+     FileDialog {
+         id:exchangeDialog
+         title:pendingFileAction.indexOf("import")===0 ? "导入 JSON" : "导出和声信息"
+@@ -994,63 +1015,69 @@ MuseScore {
+     Rectangle {
+         id:backdrop
+         anchors.fill: parent
+-        color: "#f4f4f4"
++        color: theme.background
+         Flickable {
+             id: flick
+             parent:root.dualDetailActive ? root.detailPanelHost : root.ribbon ? detailPopup.contentItem : backdrop
+             anchors.fill: parent
+             clip: true
+             contentWidth: width
+-            contentHeight: panel.height + 24
++            contentHeight: panel.height + 16
+             boundsBehavior: Flickable.StopAtBounds
+             visible:!root.ribbon || detailPopup.opened || root.dualDetailActive
+             ScrollBar.vertical: ScrollBar { }
+             Flow {
+                 id: panel
+-                x: 12
+-                y: 12
+-                width: Math.max(160, flick.width - 24)
+-                spacing: 10
++                x: 8
++                y: 8
++                width: Math.max(160, flick.width - 16)
++                spacing: 6
+                 Column {
+                     width: parent.width
+                     spacing: 3
+                     RowLayout {
+                         width: parent.width
+-                        UiLabel {text:"和声助手"; Layout.fillWidth:true; color:ink; font.pixelSize:19; font.bold:true}
+-                        ToolButton {
++                        UiLabel {text:"和声助手"; Layout.fillWidth:true; color:ink; font.pixelSize:14; font.bold:true}
++                        DeskButton {
++                            objectName:"harmonyPointButton";flat:true;text:root.unplacedMarkers.length ? "记号 !" : "记号"
++                            implicitWidth:48;enabled:root.advancedNative
++                            onClicked:{markerWindow.show();markerWindow.raise();markerWindow.requestActivate()}
++                            ToolTip.visible:hovered;ToolTip.text:root.unplacedMarkers.length ? root.unplacedMarkers.length+" 个待排记号；查看全部识别点" : "查看全部识别点与所属区间"
++                        }
++                        DeskButton {flat:true;
+                             text:typeof root.panelFloating === "boolean" && root.panelFloating ? "停靠" : "悬浮"
+                             visible:typeof root.setPanelFloating === "function"
+                             font.pixelSize:11
+                             onClicked:root.setPanelFloating(!root.panelFloating)
+                         }
+-                        ToolButton {
+-                            font.family: "Microsoft YaHei UI";text:"键盘"; checked:keyboardExpanded; checkable:true; font.pixelSize:11; onClicked:{keyboardExpanded=checked; configurationTimer.restart()}}
+-                        ToolButton {
+-                            font.family: "Microsoft YaHei UI";text:"设置"; checked:settingsExpanded; checkable:true; font.pixelSize:11; onClicked:{settingsExpanded=checked; configurationTimer.restart()}}
++                        DeskButton {flat:true;
++                            font.family: theme.fontFamily;text:"键盘"; checked:keyboardExpanded; checkable:true; font.pixelSize:11; onClicked:{keyboardExpanded=checked; configurationTimer.restart()}}
++                        DeskButton {flat:true;
++                            font.family: theme.fontFamily;text:"设置"; checked:settingsExpanded; checkable:true; font.pixelSize:11; onClicked:{settingsExpanded=checked; configurationTimer.restart()}}
+                     }
+                     UiLabel {width:parent.width; text:Harmony.rootNames[keyTonic.currentIndex]+(keyMode.currentIndex===0?" 大调":" 小调")+" · "+scopeText; color:muted; font.pixelSize:11; wrapMode:Text.Wrap}
+                 }
+                 PanelCard {
+                     id:summaryCard; objectName:"harmonySummary"
+                     width: root.expanded ? (panel.width-10)/2 : panel.width
+-                    minimumBodyHeight:settingsExpanded ? 246 : 208
++                    minimumBodyHeight:settingsExpanded ? 190 : 156
+                     StableLabel {text:positionText; color:muted; font.pixelSize:11}
+-                    StableLabel {text:chordText; color:chordInk; font.pixelSize:30; font.bold:true}
++                    StableLabel {text:chordText; color:chordInk; font.pixelSize:28; font.bold:true}
+                     RowLayout {
+                         width: parent.width
+                         UiLabel {text:"级数"; color:muted; font.pixelSize:12}
+-                        StableLabel {Layout.fillWidth:true; text:degreeText; color:chordInk; font.pixelSize:21; font.bold:true}
++                        StableLabel {Layout.fillWidth:true; text:degreeText; color:chordInk; font.pixelSize:18; font.bold:true}
+                     }
+                     StableLabel {reservedLines:2; text:matchText+(configuration.chromaticAccent && chromaticChord?" · 含调外音":""); color:muted; font.pixelSize:12}
+                     StableLabel {reservedLines:2; text:alternativesText; color:muted; font.pixelSize:11}
+-                    Rectangle {width:parent.width; height:1; color:"#EBEEF0"}
++                    Rectangle {width:parent.width; height:1; color:theme.subtleLine}
+                     StableLabel {text:inversionText; color:muted; font.pixelSize:11}
+                     StableLabel {visible:settingsExpanded; reservedLines:2; text:voicingText; color:ink; font.pixelSize:12}
+                 }
+                 PanelCard {
+                     id:tonesCard; objectName:"harmonyFunctions"
+                     width: root.expanded ? (panel.width-10)/2 : panel.width
+-                    minimumBodyHeight:body.width>=290 ? 264 : 332
++                    minimumBodyHeight:body.width>=290 ? 224 : 292
+                     UiLabel {text:"音程功能"; color:ink; font.bold:true; font.pixelSize:13}
+                     Flow {
+                         width: parent.width
+@@ -1060,10 +1087,10 @@ MuseScore {
+                             delegate: Rectangle {
+                                 width: Math.max(64, (parent.width - (parent.width >= 290 ? 18 : 12)) / (parent.width >= 290 ? 4 : 3))
+                                 height:64
+-                                radius: 6
+-                                color: modelData.present ? "#F2F5F7" : "#FAFBFC"
+-                                border.color:"#e0e0e0"
+-                                Rectangle {width:3; height:parent.height-16; x:0; y:8; color:modelData.present?modelData.color:"#e0e0e0"; radius:1}
++                                radius: 1
++                                color: modelData.present ? theme.section : theme.field
++                                border.color:theme.subtleLine
++                                Rectangle {width:parent.width-12; height:2; x:6; y:parent.height-3; color:modelData.present?modelData.color:theme.subtleLine; radius:1}
+                                 Column {
+                                     id:toneBody
+                                     x:6; y:6; width:parent.width-12; spacing:4
+@@ -1083,8 +1110,8 @@ MuseScore {
+                             model:currentNotes
+                             delegate:Rectangle {
+                                 property string functionLabel:Harmony.labelFor(modelData.pitch,chordRoot,chordDefinition)
+-                                width:noteChip.implicitWidth+16; height:26; radius:4
+-                                color:"#f4f4f4"; border.color:"#e0e0e0"
++                                width:noteChip.implicitWidth+16; height:26; radius:1
++                                color:theme.background; border.color:theme.subtleLine
+                                 Rectangle {x:0;y:6;width:3;height:14;color:root.colorFor(modelData.pitch,chordRoot,chordDefinition)}
+                                 UiLabel {id:noteChip; anchors.centerIn:parent; text:noteName(modelData)+" · "+root.functionText(modelData.pitch,chordRoot,chordDefinition); color:ink; font.pixelSize:11}
+                             }
+@@ -1142,15 +1169,15 @@ MuseScore {
+                     RowLayout {
+                         width:parent.width
+                         UiLabel {text:"调性"; color:muted; font.pixelSize:12}
+-                        ComboBox {
+-                            font.family: "Microsoft YaHei UI";
+-                            id:keyTonic; Layout.fillWidth:true; Layout.minimumWidth:55; implicitHeight:32
++                        DeskComboBox {
++                            font.family: theme.fontFamily;
++                            id:keyTonic; Layout.fillWidth:true; Layout.minimumWidth:55; implicitHeight:28
+                             model:Harmony.rootNames; font.pixelSize:12
+                             onActivated:{manualKey=true; updateTexts(); optionsChanged()}
+                         }
+-                        ComboBox {
+-                            font.family: "Microsoft YaHei UI";
+-                            id:keyMode; Layout.preferredWidth:80; implicitHeight:32
++                        DeskComboBox {
++                            font.family: theme.fontFamily;
++                            id:keyMode; Layout.preferredWidth:80; implicitHeight:28
+                             model:["大调","小调"]; font.pixelSize:12
+                             onActivated:{if(!manualKey && currentTick>=0) initializeKey(currentTick); updateTexts(); optionsChanged()}
+                         }
+@@ -1158,41 +1185,41 @@ MuseScore {
+                     UiLabel {width:parent.width; text:manualKey?"调性由你指定":"主音取自当前位置调号；大 / 小调请自行确认"; color:muted; font.pixelSize:10; wrapMode:Text.Wrap}
+                     RowLayout {
+                         width:parent.width
+-                        Switch {
+-                            font.family: "Microsoft YaHei UI";id:autoChord; text:"自动识别"; checked:true; font.pixelSize:12; onToggled:{analyze(); optionsChanged()}}
++                        DeskSwitch {
++                            font.family: theme.fontFamily;id:autoChord; text:"自动识别"; checked:true; font.pixelSize:12; onToggled:{analyze(); optionsChanged()}}
+                         Item {Layout.fillWidth:true}
+-                        Button {
+-                            font.family: "Microsoft YaHei UI";text:"读调号"; implicitHeight:32; font.pixelSize:11; onClicked:{manualKey=false; if(currentTick>=0)initializeKey(currentTick); updateTexts(); optionsChanged()}}
++                        DeskButton {
++                            font.family: theme.fontFamily;text:"读调号"; implicitHeight:28; font.pixelSize:11; onClicked:{manualKey=false; if(currentTick>=0)initializeKey(currentTick); updateTexts(); optionsChanged()}}
+                     }
+                     RowLayout {width:parent.width
+                         UiLabel {text:"踏板内识别";color:muted;font.pixelSize:11}
+-                        ComboBox {model:["单个和弦","多个和弦"];currentIndex:configuration.pedalMode;Layout.fillWidth:true;onActivated:{var c=Timeline.clone(configuration);c.pedalMode=currentIndex;configuration=Preferences.clean(c);optionsChanged()}}
++                        DeskComboBox {model:["单个和弦","多个和弦"];currentIndex:configuration.pedalMode;Layout.fillWidth:true;onActivated:{var c=Timeline.clone(configuration);c.pedalMode=currentIndex;configuration=Preferences.clean(c);optionsChanged()}}
+                     }
+-                    Switch {id:pedalContext; text:"踏板保持"; checked:true; enabled:advancedNative; onToggled:optionsChanged()}
++                    DeskSwitch {id:pedalContext; text:"踏板保持"; checked:true; enabled:advancedNative; onToggled:optionsChanged()}
+                     RowLayout {
+                         width:parent.width
+                         UiLabel {text:"无踏板聚合"; color:muted; font.pixelSize:11}
+-                        ComboBox {id:arpeggioWindow; model:["即时","半拍","1 拍","2 拍","4 拍"]; Layout.fillWidth:true; implicitHeight:32; onActivated:optionsChanged()}
++                        DeskComboBox {id:arpeggioWindow; model:["即时","半拍","1 拍","2 拍","4 拍"]; Layout.fillWidth:true; implicitHeight:28; onActivated:optionsChanged()}
+                     }
+                     UiLabel {width:parent.width; text:"聚合限当前小节，休止截断。快速转和弦时建议即时或半拍；踏板保持不等同于声学残响。"; color:muted; font.pixelSize:10; wrapMode:Text.Wrap; visible:settingsExpanded}
+-                    ComboBox {
+-                            font.family: "Microsoft YaHei UI";
+-                        id:scope; width:parent.width; implicitHeight:32; font.pixelSize:12
++                    DeskComboBox {
++                            font.family: theme.fontFamily;
++                        id:scope; width:parent.width; implicitHeight:28; font.pixelSize:12
+                         model:["当前乐器（钢琴双谱表）","全谱"]
+                         onActivated:{requestRefresh(true); optionsChanged()}
+                     }
+                     RowLayout {
+                         width:parent.width
+-                        ComboBox {
+-                            font.family: "Microsoft YaHei UI";id:rootCombo; Layout.preferredWidth:76; implicitHeight:32; model:Harmony.rootNames; font.pixelSize:12; onActivated:{autoChord.checked=false; analyze(); optionsChanged()}}
+-                        ComboBox {
+-                            font.family: "Microsoft YaHei UI";id:qualityCombo; Layout.fillWidth:true; Layout.minimumWidth:80; implicitHeight:32; model:qualityNames; font.pixelSize:12; onActivated:{autoChord.checked=false; analyze(); optionsChanged()}}
++                        DeskComboBox {
++                            font.family: theme.fontFamily;id:rootCombo; Layout.preferredWidth:76; implicitHeight:28; model:Harmony.rootNames; font.pixelSize:12; onActivated:{autoChord.checked=false; analyze(); optionsChanged()}}
++                        DeskComboBox {
++                            font.family: theme.fontFamily;id:qualityCombo; Layout.fillWidth:true; Layout.minimumWidth:80; implicitHeight:28; model:qualityNames; font.pixelSize:12; onActivated:{autoChord.checked=false; analyze(); optionsChanged()}}
+                     }
+                 }
+                 PanelCard {
+                     width:root.expanded ? (panel.width-10)/2 : panel.width
+-                    Switch {
+-                            font.family: "Microsoft YaHei UI";
++                    DeskSwitch {
++                            font.family: theme.fontFamily;
+                         id:followPlayback; text:"跟随播放"; checked:true; enabled:playbackAvailable; font.pixelSize:12
+                         visible:settingsExpanded && playbackAvailable
+                         onToggled:{lastPlayTick=-1; requestRefresh(false); configurationTimer.restart()}
+@@ -1202,14 +1229,14 @@ MuseScore {
+                         visible:settingsExpanded || !playbackAvailable
+                         text:observer?"跟随音序器发声音；选中状态与播放标记保持可见。":playbackAvailable?"读取真实播放位置；播放中仅更新面板。":"当前主程序没有提供播放位置接口，暂时跟随选区。"
+                     }
+-                    Switch {
+-                            font.family: "Microsoft YaHei UI";
++                    DeskSwitch {
++                            font.family: theme.fontFamily;
+                         id:scoreColoring; text:"谱面临时配色"; checked:false; font.pixelSize:12
+                         onToggled:{if(checked)undoPause=false; if(!internalChange){repaintNotes(); optionsChanged()}}
+                     }
+-                    Switch {id:allColor; text:"配色覆盖全部小节"; checked:false; enabled:advancedNative && scoreColoring.checked; onToggled:optionsChanged()}
+-                    Switch {id:showChords; text:"谱面上方显示和弦 / 级数"; checked:false; enabled:advancedNative; onToggled:optionsChanged()}
+-                    Switch {id:showFunctions; text:"音旁显示功能名"; checked:false; enabled:advancedNative; onToggled:optionsChanged()}
++                    DeskSwitch {id:allColor; text:"配色覆盖全部小节"; checked:false; enabled:advancedNative && scoreColoring.checked; onToggled:optionsChanged()}
++                    DeskSwitch {id:showChords; text:"谱面上方显示和弦 / 级数"; checked:false; enabled:advancedNative; onToggled:optionsChanged()}
++                    DeskSwitch {id:showFunctions; text:"音旁显示功能名"; checked:false; enabled:advancedNative; onToggled:optionsChanged()}
+                     UiLabel {
+                         width:parent.width; font.pixelSize:10; color:muted; wrapMode:Text.Wrap
+                         visible:scoreColoring.checked || settingsExpanded
+@@ -1217,12 +1244,12 @@ MuseScore {
+                     }
+                     RowLayout {
+                         width:parent.width
+-                        Button {
+-                            font.family: "Microsoft YaHei UI";text:"恢复原色"; Layout.fillWidth:true; implicitHeight:32; font.pixelSize:12; onClicked:stopColoring()}
+-                        Button {
+-                            font.family: "Microsoft YaHei UI";text:"刷新"; Layout.fillWidth:true; implicitHeight:32; font.pixelSize:12; onClicked:requestRefresh(true)}
++                        DeskButton {
++                            font.family: theme.fontFamily;text:"恢复原色"; Layout.fillWidth:true; implicitHeight:28; font.pixelSize:12; onClicked:stopColoring()}
++                        DeskButton {
++                            font.family: theme.fontFamily;text:"刷新"; Layout.fillWidth:true; implicitHeight:28; font.pixelSize:12; onClicked:requestRefresh(true)}
+                     }
+-                    StableLabel {reservedLines:2; text:noticeText; color:muted; font.pixelSize:10}
++                    StableLabel {reservedLines:2; text:placementNotice || noticeText; color:muted; font.pixelSize:10}
+                 }
+                 PanelCard {
+                     width:root.expanded ? (panel.width-10)/2 : panel.width
+@@ -1230,8 +1257,8 @@ MuseScore {
+                     ConfigurationEditor {width:parent.width; configuration:root.configuration; onModified:{root.configuration=configuration; rebuildRegions();analyze();optionsChanged(false)}}
+                     RowLayout {
+                         width:parent.width
+-                        Button {text:"导入配置"; Layout.fillWidth:true; enabled:advancedNative; onClicked:chooseFile("import-config")}
+-                        Button {text:"导出配置"; Layout.fillWidth:true; enabled:advancedNative; onClicked:chooseFile("export-config")}
++                        DeskButton {text:"导入配置"; Layout.fillWidth:true; enabled:advancedNative; onClicked:chooseFile("import-config")}
++                        DeskButton {text:"导出配置"; Layout.fillWidth:true; enabled:advancedNative; onClicked:chooseFile("export-config")}
+                     }
+                     UiLabel {width:parent.width; text:"设置自动保存，下次启动自动读取。"; color:muted; font.pixelSize:10; wrapMode:Text.Wrap}
+                 }
+@@ -1241,7 +1268,7 @@ MuseScore {
+                     RangeEditor {width:parent.width;region:root.ownedRegion;regions:root.analysisRegions.filter(function(n){return n.part===root.focusedPart})
+                         tick:Math.max(0,root.currentTick);scoreEnd:root.analysisEnd;canUndo:root.editUndo.length>0;canRedo:root.editRedo.length>0
+                         roots:Harmony.rootNames;rootPcs:Harmony.rootPcs;qualities:root.qualityNames;onAction:root.editRange(command,start,end,rootIndex,qualityIndex,bassIndex)}
+-                    Button {text:"复核完成：应用原人工范围";visible:root.manualNeedsReview;onClicked:root.editRange("review",0,0,0,0)}
++                    DeskButton {text:"复核完成：应用原人工范围";visible:root.manualNeedsReview;onClicked:root.editRange("review",0,0,0,0)}
+                 }
+                 PanelCard {
+                     width:root.expanded ? (panel.width-10)/2 : panel.width
+@@ -1249,10 +1276,10 @@ MuseScore {
+                     UiLabel {text:"全谱和弦分析"; color:ink; font.bold:true; font.pixelSize:13}
+                     Flow {
+                         width:parent.width; spacing:6
+-                        Button {text:"导出 JSON"; enabled:advancedNative; onClicked:prepareExport("json")}
+-                        Button {text:"导出 CSV"; enabled:advancedNative; onClicked:prepareExport("csv")}
+-                        Button {text:"导入 JSON"; enabled:advancedNative; onClicked:chooseFile("import-analysis")}
+-                        Button {text:"重新检测"; enabled:advancedNative; onClicked:{importedRecords=[];importedRegions=[]; optionsChanged()}}
++                        DeskButton {text:"导出 JSON"; enabled:advancedNative; onClicked:prepareExport("json")}
++                        DeskButton {text:"导出 CSV"; enabled:advancedNative; onClicked:prepareExport("csv")}
++                        DeskButton {text:"导入 JSON"; enabled:advancedNative; onClicked:chooseFile("import-analysis")}
++                        DeskButton {text:"重新检测"; enabled:advancedNative; onClicked:{importedRecords=[];importedRegions=[]; optionsChanged()}}
+                     }
+                     UiLabel {width:parent.width; text:analysisTimer.running?"正在分批分析…":analysisRecords.length+" 个时间切片"+(importedRecords.length?" · 使用导入分析":""); color:muted; font.pixelSize:11; wrapMode:Text.Wrap}
+                 }
+@@ -1278,7 +1305,7 @@ MuseScore {
+                     Flow {
+                         id:ribbonTones; visible:ribbonGroup.width>=540; Layout.fillWidth:true; Layout.alignment:Qt.AlignVCenter; spacing:6
+                         Repeater {model:root.summaryToneRows; delegate:Rectangle {
+-                            width:42; height:30; color:"#ffffff"; radius:4
++                            width:42; height:30; color:theme.field; radius:1
+                             Rectangle {x:0;y:8;width:3;height:14;color:modelData.present?modelData.color:"#d0d0d0"}
+                             UiLabel {anchors.centerIn:parent; text:modelData.label; color:modelData.present?ink:muted; font.pixelSize:12}
+                         }}
+@@ -1287,12 +1314,16 @@ MuseScore {
+             }
+             Column {
+                 id:ribbonControls; width:112; anchors.right:parent.right; anchors.rightMargin:12; anchors.verticalCenter:parent.verticalCenter; spacing:4
+-                ComboBox {width:parent.width; model:["靠左","居中","靠右","自定位置"]; currentIndex:configuration.ribbonAlign; implicitHeight:28; font.pixelSize:11; onActivated:root.setRibbonPosition(currentIndex)}
+-                Button {width:parent.width; text:root.dualDetailActive ? "隐藏右侧详情" : "右侧详情"; visible:typeof root.showDetailPanel==="function"; onClicked:root.toggleDetailPanel(); implicitHeight:28; font.pixelSize:11}
++                DeskComboBox {width:parent.width; model:["靠左","居中","靠右","自定位置"]; currentIndex:configuration.ribbonAlign; implicitHeight:28; font.pixelSize:11; onActivated:root.setRibbonPosition(currentIndex)}
++                RowLayout {
++                    width:parent.width;spacing:4
++                    DeskButton {Layout.fillWidth:true;implicitWidth:50;text:"详情";checked:root.dualDetailActive;visible:typeof root.showDetailPanel==="function";onClicked:root.toggleDetailPanel();ToolTip.visible:hovered;ToolTip.text:"显示／隐藏右侧详情"}
++                    DeskButton {Layout.fillWidth:true;implicitWidth:50;text:root.unplacedMarkers.length ? "记号 !" : "记号";enabled:root.advancedNative;onClicked:{markerWindow.show();markerWindow.raise();markerWindow.requestActivate()}}
++                }
+                 RowLayout {
+                     width:parent.width; spacing:4
+-                    Button {Layout.fillWidth:true; text:"窗口"; onClicked:root.openDetailWindow(); implicitHeight:28; font.pixelSize:11}
+-                    Button {Layout.fillWidth:true; text:"悬浮"; visible:typeof root.setPanelFloating==="function"; onClicked:root.setPanelFloating(true); implicitHeight:28; font.pixelSize:11}
++                    DeskButton {Layout.fillWidth:true; text:"窗口"; onClicked:root.openDetailWindow(); implicitHeight:28; font.pixelSize:11}
++                    DeskButton {Layout.fillWidth:true; text:"悬浮"; visible:typeof root.setPanelFloating==="function"; onClicked:root.setPanelFloating(true); implicitHeight:28; font.pixelSize:11}
+                 }
+             }
+         }
+diff --git a/share/plugins/HarmonyAssistant/MarkerList.qml b/share/plugins/HarmonyAssistant/MarkerList.qml
+new file mode 100644
+index 000000000..112d7e368
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/MarkerList.qml
+@@ -0,0 +1,41 @@
++import QtQuick 2.9
++import QtQuick.Controls 2.2
++import QtQuick.Layouts 1.3
++
++ColumnLayout {
++    id:panel
++    property var regions:[]
++    property var unplaced:({})
++    property int tick:-1
++    signal activated(int tick,int part)
++    UiTheme {id:theme}
++    spacing:6
++    UiLabel {Layout.fillWidth:true;text:"识别点 · 当前乐器";font.bold:true;font.pixelSize:13}
++    UiLabel {Layout.fillWidth:true;text:"查看完整结果；点击定位并高亮。";color:theme.muted;font.pixelSize:11}
++    ListView {
++        id:list;objectName:"harmonyMarkerList"
++        Layout.fillWidth:true;Layout.fillHeight:true;clip:true
++        model:panel.regions
++        ScrollBar.vertical:ScrollBar {}
++        delegate:Rectangle {
++            width:list.width;height:58
++            property bool current:modelData.start<=panel.tick && panel.tick<modelData.end
++            property bool blocked:!!panel.unplaced[modelData.part+":"+modelData.start]
++            color:current ? theme.selected : theme.field
++            Rectangle {width:parent.width;height:1;anchors.bottom:parent.bottom;color:theme.subtleLine}
++            Rectangle {width:2;height:parent.height;color:current ? theme.accent : "transparent"}
++            Column {
++                x:8;y:7;width:parent.width-16;spacing:4
++                RowLayout {
++                    width:parent.width
++                    UiLabel {Layout.fillWidth:true;text:modelData.chord+"  "+modelData.degree;font.pixelSize:15;font.bold:true;elide:Text.ElideRight}
++                    UiLabel {text:blocked ? "待排" : modelData.source==="manual" ? "修正" : "";color:blocked ? "#b56b24" : theme.muted;font.pixelSize:10}
++                }
++                UiLabel {text:(modelData.bar ? "第 "+modelData.bar+" 小节 · " : "")+modelData.start+"–"+modelData.end+" tick";color:theme.muted;font.pixelSize:10}
++            }
++            MouseArea {anchors.fill:parent;cursorShape:Qt.PointingHandCursor;onClicked:panel.activated(modelData.start,modelData.part)}
++        }
++        UiLabel {anchors.centerIn:parent;visible:!list.count;text:"暂无识别点";color:theme.muted}
++    }
++    UiLabel {Layout.fillWidth:true;text:"待排表示谱面仍无安全空间，结果不会丢失。持续的同一和弦只在起点标记；范围可在设置中拆分。";wrapMode:Text.Wrap;color:theme.muted;font.pixelSize:10}
++}
+diff --git a/share/plugins/HarmonyAssistant/PanelCard.qml b/share/plugins/HarmonyAssistant/PanelCard.qml
+index dfaa04604..79a4f330a 100644
+--- a/share/plugins/HarmonyAssistant/PanelCard.qml
++++ b/share/plugins/HarmonyAssistant/PanelCard.qml
+@@ -4,15 +4,16 @@ Rectangle {
+     default property alias content: body.data
+     property alias body: body
+     property real minimumBodyHeight: 0
+-    color: "#FFFFFF"
+-    radius: 10
+-    border.color: "#E1E5E8"
+-    implicitHeight: Math.max(minimumBodyHeight, body.implicitHeight) + 24
++    UiTheme {id:theme}
++    color: theme.field
++    radius: 2
++    border.color: theme.subtleLine
++    implicitHeight: Math.max(minimumBodyHeight, body.implicitHeight) + 20
+     Column {
+         id: body
+-        x: 12
+-        y: 12
+-        width: parent.width - 24
+-        spacing: 8
++        x: 10
++        y: 10
++        width: parent.width - 20
++        spacing: 6
+     }
+ }
+diff --git a/share/plugins/HarmonyAssistant/README.md b/share/plugins/HarmonyAssistant/README.md
+index 7a3afcc48..a51c3b947 100644
+--- a/share/plugins/HarmonyAssistant/README.md
++++ b/share/plugins/HarmonyAssistant/README.md
+@@ -1,16 +1,26 @@
+-# 和声助手 1.4.0
++# 和声助手 1.5.0
+ 
+-MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本 `0.8.0` 使用；音乐规则与界面仍在插件，主程序只提供通用数值快照、屏幕预览、停靠状态和文件读写接口。
++MuseScore 3 Evolution 钢琴编曲面板。新版避让搭配个人主程序版本 `0.22.0` 使用，继承本机最新 `0.21.0` 的其他功能；音乐规则与界面仍在插件，主程序只提供通用数值快照、屏幕预览、停靠状态和文件读写接口。
+ 
+ ## 开始使用
+ 
+-本机新程序：`E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_harmony_1_4_x64\bin\MuseScore3Evo.exe`。
++本机新程序：`E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_harmony_1_5_x64\bin\MuseScore3Evo.exe`。
+ 
+-插件已放入新程序的 `plugins/HarmonyAssistant/`，并同步到你原先已启用的个人插件目录；旧文件逐个备份为 `.pre-1.4.0.bak`。启动新程序，在「插件 → 插件管理器」勾选 `HarmonyAssistant_MS3.qml`，然后运行「插件 → Harmony Assistant」。选择钢琴谱上的音符即可；普通空格播放自动跟随。请使用上面的新程序路径，旧程序和旧安装目录均保留。
++插件放在新程序的 `plugins/HarmonyAssistant/`，并同步到原先已启用的个人插件目录；旧文件逐个备份为 `.pre-1.5.0.bak`。启动新程序，在「插件 → 插件管理器」勾选 `HarmonyAssistant_MS3.qml`，然后运行「插件 → Harmony Assistant」。选择钢琴谱上的音符即可；普通空格播放自动跟随。请使用上面的新程序路径，旧程序和旧安装目录均保留。
+ 
+-单独安装插件时，将本目录的运行文件一起复制：`HarmonyAssistant_MS3.qml`、`Harmony.js`、`Preferences.js`、`Analysis.js`、`ConfigurationEditor.qml`、`SettingsStore.qml`、`PanelCard.qml`、`UiLabel.qml`、`StableLabel.qml`、`ColorOption.qml`、`AppearanceEditor.qml`、`Timeline.js`、`RangeEditor.qml`。标准 MuseScore 3 仍可使用原有选区分析与颜色恢复；新增全谱图层、踏板上下文及分析交换需要新主程序。只勾选主入口，不勾选组件或 tests 下的测试插件。
++单独安装插件时，复制本目录的所有 `.qml`、`.js` 运行文件（20 个）与 README，或解压发布 ZIP；不要复制 tests、native、backups 子目录。标准 MuseScore 3 仍可使用原有选区分析与颜色恢复；全谱图层、踏板上下文及分析交换需要个人主程序。只勾选主入口，不勾选组件或 tests 下的测试插件。
+ 
+-## 1.4 区间识别、人工修正与原生字体
++## 1.5 界面与谱面避让
++
++- 参考 [Cubase 和弦轨检查器](https://www.steinberg.help/r/cubase-pro/15.0/en/cubase_nuendo/topics/tracks_about/tracks_about_chord_track_inspector_r.html)与 [Ableton Live 界面组织](https://www.ableton.com/en/live-manual/12/first-steps/)，采用紧凑的检查器分区、平面控件、细分隔线和明确的文字层次；明暗背景与强调色跟随主程序系统调色板。功能音的用户配色、谱面字体与样式不被界面主题覆盖。
++- 顶部横条的左／中／右／自定义定位、右侧共享详情、独立窗口与悬浮都保留。候选、告警、功能格与键盘继续保留稳定的空间，长短和弦文字不会使其上下抖动；较窄面板仍可滚动。
++- 旧实现检查六个固定高度，全部碰撞后省略记号，即使两个固定高度之间还有空隙。新版按原谱对象和已放置记号的实际边界向上寻找安全空位，保持共同基线与和声变化 tick 的准确 x；只抬高发生冲突的记号，不左右挪动。高音、速度文字、前一和弦与其他谱表均参与避让。
++- 点击「记号」打开当前乐器的全部识别点与作用区间，点击一项即可定位并高亮。页面边界内确实无安全空间时显示「记号 !」与「待排」状态；分析结果仍完整保留、可导出，不静默丢失。关闭主面板会收起此窗口。
++- 同一持续和弦只在区间起点生成记号，无新的识别变化时本来就不会每个小节重复；需要逐小节提示可开启设置中的小节重复。原谱已有和弦／级数仍按原有优先开关避免重复。列表可帮助区分「没有新的识别点」与「已有结果但待排」。
++
++谱面记号仍是屏幕预览，不移动原谱文字、不增加系统间距、不写入乐谱或 PDF。极端拥挤、过大字号、页边界内空位不足仍可能待排；首批布局有成本，播放只切换既有记号的高亮，不每帧重新避让，不进入音频回调。仅凭用户截图不能断定某个空白位置究竟属于哪种情况。
++
++## 历史 1.4 区间识别、人工修正与原生字体
+ 
+ - 设置 →「踏板内识别」选择「一个和弦」或「允许多个」。默认综合整个踏板区间的持续时长与音高证据，只生成一个识别结果；跨小节、延音链不单独产生变化点。多和弦模式仍允许同一踏板内换和声，但降低踏板残留与旧延长音的影响，优先考虑新伴奏与当前实际低音。级数按和弦根音计算，转位低音写在斜线后，不将低音当成新的级数根音。
+ - 全谱结果是按乐器保存的半开区间 `[start,end)`。相邻相同根音、类型、低音和调性合并；默认关闭小节重复记号，可单独开启。「顶部摘要结果」与「详细面板结果」各自选择实时或所属和弦，功能音和离调色也分别遵循所选结果。实时瞬间与区间综合结果允许不同。
+@@ -97,7 +107,7 @@ MuseScore 3 Evolution 钢琴编曲面板。完整版搭配个人主程序版本
+ - 主程序 `ScoreObserver`：GUI 线程真实位置、数值快照、按内容版本失效的声部索引。
+ - `NotePreviewLayers`：视图内独立颜色层；模型、音频回调、文件格式不承担和弦功能。
+ 
+-本目录是插件编辑源。发布时将上述十三个运行文件及本 README 同步到主仓库 `share/plugins/HarmonyAssistant/`，现有递归安装规则会打包它们。原稿、1.0 备份与旧 ZIP 均保留。native 下的迁移脚本只记录一次性的开发过程，不能重复运行；供其他机器应用的最终修改见版本化 patch。主程序架构/API/合并点详见其 `personal/docs/10-score-observer.md`。
++本目录是插件编辑源。发布时将 21 个运行文件及本 README 同步到主仓库 `share/plugins/HarmonyAssistant/`，现有递归安装规则会打包它们。`UiTheme.qml` 与五个 `Desk*.qml` 集中负责主题及控件，`MarkerList.qml` 负责识别点列表，音乐识别不依赖这些组件。原稿、1.0 备份与旧 ZIP 均保留。native 下的迁移脚本只记录一次性的开发过程，不能重复运行；供其他机器应用的最终修改见版本化 patch。主程序架构/API/合并点详见其 `personal/docs/10-score-observer.md`。
+ 
+ ## 验证与性能
+ 
+@@ -113,6 +123,8 @@ python HarmonyAssistant/tests/test_fixed_panel.py
+ python HarmonyAssistant/tests/test_dual_panel.py
+ python HarmonyAssistant/tests/test_regions_panel.py
+ python HarmonyAssistant/tests/test_range_drag.py
++python HarmonyAssistant/tests/test_desk_controls.py
++python HarmonyAssistant/tests/test_marker_list.py
+ python HarmonyAssistant/tests/run_native_smoke.py <新程序exe> <独立测试目录>
+ ```
+ 
+@@ -133,3 +145,8 @@ Windows 真实 GUI 测试需完整安装资源和 Qt 运行时，使用 `tests/r
+ 1.4 验证：原生观察器 16 项、实际 Widgets/QML 宿主 10 项通过。新增持续踏板跨小节、低音转位、新伴奏优先、人工覆盖/抑制/恢复、范围拖动吸附与绑定恢复、摘要/详情独立结果、专用字形及选中/播放/拖放/P 键盘/选区框对照。1000 小节/6000 音符实测：索引 26.47 ms、1000 缓存快照 1.95 ms、上下文 6.46 ms、数值帧 24.04 ms、基础色层定位 21.66 ms；1000 次标记高亮索引变化 0.703 ms，不含绘制。离线 JS 10000 切片约 1.9 秒，生产版本用 32 步/约 6 ms 预算分批构建，首次全谱分析仍有成本。历史数字与说明保留用于追溯；以当前版本说明为准。
+ 
+ 最终安装程序连续启动两次通过，样式及 `Am/C` 人工区间均从隔离设置自动恢复；原有音符 suite 11 项通过。导入先校验全部区间再写状态，坏数据不会改动已有人工修正。
++
++
++1.5 验证：最终 x64 Release 构建与独立安装成功，观察器 17／真实 Qt 宿主 12 项全部通过，0 失败／跳过。新增旧六行间隙、高音＋速度文字、相邻长记号、超页待排及 v0.22.0 关于／启动画面回归；固定布局、双面板、区域历史／拖动和原生选择配色对照保留。明暗控件真实点击／输入、完整列表与定位通过，安装连续启动两次恢复样式及 Am/C 人工区间。现有弃用／临时工作区警告仍在日志中，不宣称无警告。
++
++本次 1000 小节／6000 音符：索引 27.687 ms、1000 缓存快照 1.962 ms、上下文 6.507 ms、数值帧 25.139 ms、基础色层 22.434 ms；1000 次记号高亮索引切换 0.736 ms，不含实际重绘。日志见 tests/native-*-1-5。防递归的目录外测试助手为 tests/run_gui_1_5.py。
+diff --git a/share/plugins/HarmonyAssistant/RangeEditor.qml b/share/plugins/HarmonyAssistant/RangeEditor.qml
+index 68e2f0c43..eb469e28e 100644
+--- a/share/plugins/HarmonyAssistant/RangeEditor.qml
++++ b/share/plugins/HarmonyAssistant/RangeEditor.qml
+@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.3
+ 
+ Column {
+     id:editor
++    UiTheme {id:theme}
+     objectName:"harmonyRangeEditor"
+     property var region:null
+     property var regions:[]
+@@ -17,11 +18,11 @@ Column {
+     signal action(string command,int start,int end,int rootIndex,int qualityIndex,int bassIndex)
+     onRegionChanged:if(region){root.currentIndex=Math.max(0,editor.rootPcs.indexOf(region.root));quality.currentIndex=Math.max(0,region.definition)}
+     spacing:8
+-    UiLabel {text:"和声范围编辑";font.bold:true;color:"#343a3f";font.pixelSize:13}
+-    UiLabel {width:parent.width;text:region ? region.chord+" · ticks "+region.start+"–"+region.end : "选择一个记号或谱面位置";wrapMode:Text.Wrap;color:"#697077";font.pixelSize:11}
+-    Switch {id:editing;objectName:"harmonyRangeEditing";text:"显示可拖动的范围手柄"}
++    UiLabel {text:"和声范围编辑";font.bold:true;color:theme.text;font.pixelSize:13}
++    UiLabel {width:parent.width;text:region ? region.chord+" · ticks "+region.start+"–"+region.end : "选择一个记号或谱面位置";wrapMode:Text.Wrap;color:theme.muted;font.pixelSize:11}
++    DeskSwitch {id:editing;objectName:"harmonyRangeEditing";text:"显示可拖动的范围手柄"}
+     Rectangle {
+-        id:strip;width:parent.width;height:70;visible:editing.checked;color:"#eef1f4";radius:4
++        id:strip;width:parent.width;height:70;visible:editing.checked;color:theme.section;radius:4
+         property int leftTick:region?Math.max(0,region.start-480):Math.max(0,tick-480)
+         property int rightTick:region?Math.min(scoreEnd,region.end+480):Math.min(scoreEnd,tick+1920)
+         function xFor(value){return 12+(width-24)*(value-leftTick)/Math.max(1,rightTick-leftTick)}
+@@ -31,14 +32,14 @@ Column {
+             Rectangle {visible:modelData.end>strip.leftTick && modelData.start<strip.rightTick
+                 x:strip.xFor(Math.max(modelData.start,strip.leftTick));y:20;height:30
+                 width:Math.max(1,strip.xFor(Math.min(modelData.end,strip.rightTick))-x-2)
+-                color:editor.region && modelData.id===editor.region.id?"#d0e2ff":"#dce3e8"
+-                UiLabel {anchors.centerIn:parent;width:parent.width-4;text:modelData.chord;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;color:"#253342";font.pixelSize:11}
++                color:editor.region && modelData.id===editor.region.id?theme.selected:theme.section
++                UiLabel {anchors.centerIn:parent;width:parent.width-4;text:modelData.chord;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;color:theme.text;font.pixelSize:11}
+                 MouseArea {anchors.fill:parent;onClicked:editor.action("select",modelData.start,modelData.end,0,0,0)}
+             }
+         }
+         Repeater {
+             model:editor.region?2:0
+-            Rectangle {id:handle;width:12;height:48;y:10;radius:3;color:"#0043ce"
++            Rectangle {id:handle;width:12;height:48;y:10;radius:3;color:theme.accent
+                 objectName:index===0?"harmonyRangeStart":"harmonyRangeEnd"
+                 x:strip.xFor(index===0?editor.region.start:editor.region.end)-width/2
+                 MouseArea {anchors.fill:parent;drag.target:handle;drag.axis:Drag.XAxis;drag.minimumX:0;drag.maximumX:strip.width-handle.width
+@@ -47,30 +48,30 @@ Column {
+         }
+     }
+     RowLayout {width:parent.width
+-        UiLabel {text:"起点 tick";font.pixelSize:11;color:"#697077"}
+-        SpinBox {id:start;Layout.fillWidth:true;from:0;to:Math.max(0,editor.scoreEnd-1);value:editor.region?editor.region.start:Math.max(0,editor.tick);stepSize:60;editable:true}
++        UiLabel {text:"起点 tick";font.pixelSize:11;color:theme.muted}
++        DeskSpinBox {id:start;Layout.fillWidth:true;from:0;to:Math.max(0,editor.scoreEnd-1);value:editor.region?editor.region.start:Math.max(0,editor.tick);stepSize:60;editable:true}
+     }
+     RowLayout {width:parent.width
+-        UiLabel {text:"终点 tick";font.pixelSize:11;color:"#697077"}
+-        SpinBox {id:end;Layout.fillWidth:true;from:1;to:editor.scoreEnd;value:editor.region?editor.region.end:Math.min(editor.scoreEnd,Math.max(0,editor.tick)+480);stepSize:60;editable:true}
++        UiLabel {text:"终点 tick";font.pixelSize:11;color:theme.muted}
++        DeskSpinBox {id:end;Layout.fillWidth:true;from:1;to:editor.scoreEnd;value:editor.region?editor.region.end:Math.min(editor.scoreEnd,Math.max(0,editor.tick)+480);stepSize:60;editable:true}
+     }
+     RowLayout {width:parent.width
+-        ComboBox {id:root;model:editor.roots;Layout.preferredWidth:70}
+-        ComboBox {id:quality;model:editor.qualities;Layout.fillWidth:true}
++        DeskComboBox {id:root;model:editor.roots;Layout.preferredWidth:70}
++        DeskComboBox {id:quality;model:editor.qualities;Layout.fillWidth:true}
+     }
+     RowLayout {width:parent.width
+-        UiLabel {text:"低音";color:"#697077";font.pixelSize:11}
+-        ComboBox {id:bass;model:["实际低音"].concat(editor.roots);Layout.fillWidth:true}
++        UiLabel {text:"低音";color:theme.muted;font.pixelSize:11}
++        DeskComboBox {id:bass;model:["实际低音"].concat(editor.roots);Layout.fillWidth:true}
+     }
+     Flow {width:parent.width;spacing:5
+-        Button {text:"应用范围";enabled:!!editor.region;onClicked:editor.action("range",start.value,end.value,root.currentIndex,quality.currentIndex,0)}
+-        Button {text:"指定和弦";onClicked:editor.action("assign",start.value,end.value,root.currentIndex,quality.currentIndex,bass.currentIndex)}
+-        Button {text:"在当前位置拆分";enabled:!!editor.region && editor.tick>editor.region.start && editor.tick<editor.region.end;onClicked:editor.action("split",editor.tick,end.value,0,0,0)}
+-        Button {text:"合并前一段";enabled:!!editor.region;onClicked:editor.action("merge",start.value,end.value,0,0,0)}
+-        Button {text:"排除此范围";onClicked:editor.action("suppress",start.value,end.value,0,0,0)}
+-        Button {text:"恢复自动";onClicked:editor.action("restore",start.value,end.value,0,0,0)}
+-        Button {text:"撤销修正";enabled:editor.canUndo;onClicked:editor.action("undo",0,0,0,0,0)}
+-        Button {text:"重做修正";enabled:editor.canRedo;onClicked:editor.action("redo",0,0,0,0,0)}
++        DeskButton {text:"应用范围";enabled:!!editor.region;onClicked:editor.action("range",start.value,end.value,root.currentIndex,quality.currentIndex,0)}
++        DeskButton {text:"指定和弦";onClicked:editor.action("assign",start.value,end.value,root.currentIndex,quality.currentIndex,bass.currentIndex)}
++        DeskButton {text:"在当前位置拆分";enabled:!!editor.region && editor.tick>editor.region.start && editor.tick<editor.region.end;onClicked:editor.action("split",editor.tick,end.value,0,0,0)}
++        DeskButton {text:"合并前一段";enabled:!!editor.region;onClicked:editor.action("merge",start.value,end.value,0,0,0)}
++        DeskButton {text:"排除此范围";onClicked:editor.action("suppress",start.value,end.value,0,0,0)}
++        DeskButton {text:"恢复自动";onClicked:editor.action("restore",start.value,end.value,0,0,0)}
++        DeskButton {text:"撤销修正";enabled:editor.canUndo;onClicked:editor.action("undo",0,0,0,0,0)}
++        DeskButton {text:"重做修正";enabled:editor.canRedo;onClicked:editor.action("redo",0,0,0,0,0)}
+     }
+-    UiLabel {width:parent.width;text:"手柄吸附至 1/8 拍；数值输入可精确到 tick。只改分析范围，原谱音符和原生撤销不变。删除识别边界请用合并。";wrapMode:Text.Wrap;color:"#697077";font.pixelSize:10}
++    UiLabel {width:parent.width;text:"手柄吸附至 1/8 拍；数值输入可精确到 tick。只改分析范围，原谱音符和原生撤销不变。删除识别边界请用合并。";wrapMode:Text.Wrap;color:theme.muted;font.pixelSize:10}
+ }
+diff --git a/share/plugins/HarmonyAssistant/UiLabel.qml b/share/plugins/HarmonyAssistant/UiLabel.qml
+index a41259b73..733d7f6ee 100644
+--- a/share/plugins/HarmonyAssistant/UiLabel.qml
++++ b/share/plugins/HarmonyAssistant/UiLabel.qml
+@@ -1,7 +1,8 @@
+ import QtQuick.Controls 2.2
+ 
+ Label {
+-    font.family: "Microsoft YaHei UI"
++    UiTheme {id:theme}
++    font.family: theme.fontFamily
+     font.pixelSize: 12
+-    color: "#253342"
++    color: theme.text
+ }
+diff --git a/share/plugins/HarmonyAssistant/UiTheme.qml b/share/plugins/HarmonyAssistant/UiTheme.qml
+new file mode 100644
+index 000000000..448d9bd6e
+--- /dev/null
++++ b/share/plugins/HarmonyAssistant/UiTheme.qml
+@@ -0,0 +1,19 @@
++import QtQuick 2.9
++
++QtObject {
++    property SystemPalette palette: SystemPalette {colorGroup:SystemPalette.Active}
++    readonly property bool dark: palette.window.r+palette.window.g+palette.window.b<1.5
++    readonly property string fontFamily: Qt.platform.os==="windows" ? "Microsoft YaHei UI" : Qt.application.font.family
++    readonly property color background: palette.window
++    readonly property color text: palette.windowText
++    readonly property color muted: mix(background,text,0.62)
++    readonly property color section: dark ? "#34383d" : "#e7e9eb"
++    readonly property color field: dark ? "#25292e" : "#fafafa"
++    readonly property color line: dark ? "#555a60" : "#bfc3c7"
++    readonly property color subtleLine: dark ? "#44494e" : "#d1d4d7"
++    readonly property color hover: dark ? "#454b52" : "#dce0e3"
++    readonly property color accent: palette.highlight
++    readonly property color accentText: palette.highlightedText
++    readonly property color selected: mix(field,accent,0.18)
++    function mix(a,b,amount) {return Qt.rgba(a.r+(b.r-a.r)*amount,a.g+(b.g-a.g)*amount,a.b+(b.b-a.b)*amount,1)}
++}
+-- 
+2.34.1.windows.1
+
