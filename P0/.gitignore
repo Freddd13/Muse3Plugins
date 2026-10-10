@@ -1,0 +1,11 @@
+tests/build/
+out/
+*.log
+*-results.txt
+__pycache__/
+*.py
+!apply_native.py
+!patch_midi.py
+!patch_snapshot.py
+!patch_translation.py
+!patch_workspace.py
