@@ -31,3 +31,12 @@ const repeated=ctx.align({notes,performance:performance.concat(performance.map(n
 const cached=ctx.align({notes,performance,cacheKey:"stable"});const reused=ctx.align({notes,performance,cacheKey:"stable",previousKey:"stable",segments:cached.segments,links:[{scoreId:"s3",midiId:"m3"}]});assert.strictEqual(reused.matches.length,8);
 fs.mkdirSync("P1/out/expression",{recursive:true});fs.writeFileSync("P1/out/expression/alignment.json",JSON.stringify(reports,null,2));
 console.log("Alignment truth fixtures, corrections, polyphony, tie and protected candidates passed.");
+
+const expressive=performance.map((n,i)=>Object.assign({},n,{seconds:[0,.48,1.01,1.55,2.1,2.69,3.27,3.95][i]}));
+let er=ctx.align({notes,performance:expressive});er.matches.forEach(m=>m.confirmed=true);
+let rub=ctx.candidates({result:er,notes,scope:{start:0,end:3840},config:{velocity:false,rubato:true,keepDuration:true,strength:50}});
+let dt=0;for(let i=1;i<rub.tempos.length;++i)dt+=(rub.tempos[i].tick-rub.tempos[i-1].tick)/480*60/rub.tempos[i-1].bpm;assert(Math.abs(dt-3.5)<1e-8);
+let relNotes=notes.map(n=>Object.assign({},n,{onSeconds:n.onSeconds*2,scoreSeconds:n.onSeconds}));let rel=ctx.align({notes:relNotes,performance:expressive});rel.matches.forEach(m=>m.confirmed=true);let rc=ctx.candidates({result:rel,config:{rubato:true,keepDuration:true}});assert(Math.abs(rc.tempos[2].bpm-rub.tempos[2].bpm)<1e-8);
+const eight=notes.map((n,i)=>Object.assign({},n,{tick:i*240}));assert.strictEqual(ctx.align({notes:eight,performance}).matches.length,8);
+const triplet=notes.map((n,i)=>Object.assign({},n,{tick:i*160}));assert.strictEqual(ctx.align({notes:triplet,performance}).matches.length,8);
+console.log("Written rubato duration, independent transport clock, compound subdivisions passed.");
