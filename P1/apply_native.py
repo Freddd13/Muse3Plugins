@@ -13,7 +13,7 @@ def apply():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
    if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
  cm=HOST/'mscore/plugin/plugin.cmake';text=cm.read_text(encoding='utf8')
- owned=['referencefactory.h','referencefactory.cpp','midiinput.h','midiinput.cpp','scoreworkflow.cpp','workflowexpression.cpp','tapwrite.h','tapwrite.cpp']
+ owned=['referencefactory.h','referencefactory.cpp','midiinput.h','midiinput.cpp','scoreworkflow.cpp','workflowexpression.cpp','workflowvariants.cpp','tapwrite.h','tapwrite.cpp']
  for name in owned:
   text='\n'.join(line for line in text.splitlines() if line.strip()!='${PROJECT_SOURCE_DIR}/mscore/workflow/'+name)+'\n'
  additions=''.join('\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/'+name for name in owned)
@@ -37,13 +37,14 @@ def apply():
  ownedFields=['      int _midiToken = 0;','      std::shared_ptr<std::atomic_bool> _midiCancel;','      QPointer<Ms::Score> _workflowOriginal;','      bool _workflowApplyingPreview = false;']
  text='\n'.join(l for l in text.splitlines() if l not in ownedFields)+'\n'
  text=text.replace('      int _readOnlyJobToken = 0;','      int _readOnlyJobToken = 0;\n'+'\n'.join(ownedFields),1)
- api.write_bytes(text.encode('utf8'))
+ if api.read_text(encoding='utf8')!=text:api.write_bytes(text.encode('utf8'))
  api=HOST/'mscore/plugin/api/scoreobserver.h';text=api.read_text(encoding='utf8')
  declarations=[
   'int readPerformanceMidi(const QString& path);',
   'void cancelPerformanceMidi();',
   'QVariantMap savePerformanceSource(const QString& source,const QString& destination,const QString& expected);',
   'QVariantMap workflowInfo();',
+  'QVariantMap workflowFingerprint(int from,int limit,const QString& expected);',
   'QVariantMap performanceRange(int start,int end,int firstTrack,int endTrack,int fromTick,int limit,const QString& expected);',
   'QVariantMap navigateWorkflow(const QVariantMap& range,bool audition = false);',
   'QVariantMap applyExpression(const QVariantMap& candidate);',
