@@ -12,7 +12,13 @@ def apply():
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
    if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
- replace('mscore/plugin/plugin.cmake','set (PLUGIN_API_SRC','set (PLUGIN_API_SRC\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/referencefactory.h\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/referencefactory.cpp')
+ cm=HOST/'mscore/plugin/plugin.cmake';text=cm.read_text(encoding='utf8')
+ owned=['referencefactory.h','referencefactory.cpp','midiinput.h','midiinput.cpp','scoreworkflow.cpp']
+ for name in owned:
+  text='\n'.join(line for line in text.splitlines() if line.strip()!='${PROJECT_SOURCE_DIR}/mscore/workflow/'+name)+'\n'
+ additions=''.join('\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/'+name for name in owned)
+ text=text.replace('set (PLUGIN_API_SRC','set (PLUGIN_API_SRC'+additions,1)
+ if cm.read_text(encoding='utf8')!=text:cm.write_bytes(text.encode('utf8'))
  replace('mscore/plugin/api/qmlpluginapi.cpp','#include "scoreobserver.h"','#include "scoreobserver.h"\n#include "mscore/workflow/referencefactory.h"')
  replace('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newScoreObserver()','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }\n\nQObject* PluginAPI::newScoreObserver()')
  replace('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newScoreObserver();','      Q_INVOKABLE QObject* newScoreObserver();\n      Q_INVOKABLE QObject* newReferenceMedia();')
@@ -24,5 +30,22 @@ def apply():
   for src in plugin.rglob('*'):
    if src.is_file() and src.suffix in ('.qml','.js','.md'):
     dst=HOST/'share/plugins'/folder/src.relative_to(plugin);dst.parent.mkdir(parents=True,exist_ok=True);dst.write_bytes(src.read_bytes())
+ cm=HOST/'mtest/CMakeLists.txt';text=cm.read_text(encoding='utf8')
+ if '        mscore/p1native' not in text:cm.write_bytes(text.replace('        mscore/p0native','        mscore/p0native\n        mscore/p1native').encode('utf8'))
+ replace('mscore/plugin/api/scoreobserver.h','#include <QVector>','#include <QVector>\n#include <memory>\n#include <atomic>')
+ replace('mscore/plugin/api/scoreobserver.h','      int _readOnlyJobToken = 0;','      int _readOnlyJobToken = 0;\n      int _midiToken = 0;\n      std::shared_ptr<std::atomic_bool> _midiCancel;')
+ api=HOST/'mscore/plugin/api/scoreobserver.h';text=api.read_text(encoding='utf8')
+ declarations=[
+  'int readPerformanceMidi(const QString& path);',
+  'void cancelPerformanceMidi();',
+  'QVariantMap savePerformanceSource(const QString& source,const QString& destination,const QString& expected);',
+  'QVariantMap workflowInfo();',
+  'QVariantMap performanceRange(int start,int end,int firstTrack,int endTrack,int fromTick,int limit,const QString& expected);',
+  'QVariantMap navigateWorkflow(const QVariantMap& range,bool audition = false);'
+ ]
+ for signature in declarations:
+  if signature not in text:text=text.replace('      Q_INVOKABLE QString analysisRevision();','      Q_INVOKABLE QString analysisRevision();\n      Q_INVOKABLE '+signature,1)
+ if text!=api.read_text(encoding='utf8'):api.write_bytes(text.encode('utf8'))
+ replace('mscore/plugin/api/scoreobserver.h','   signals:\n      void readOnlyJobFinished','   signals:\n      void performanceMidiReady(int token,const QVariantMap& result);\n      void readOnlyJobFinished')
  print('P1 owned modules copied, existing features preserved.')
 if __name__=='__main__':apply()
