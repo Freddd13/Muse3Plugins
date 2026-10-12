@@ -44,6 +44,7 @@ def apply():
   'void cancelPerformanceMidi();',
   'QVariantMap savePerformanceSource(const QString& source,const QString& destination,const QString& expected);',
   'QVariantMap workflowInfo();',
+  'QVariantMap workflowStatus();',
   'QVariantMap workflowFingerprint(int from,int limit,const QString& expected);',
   'QVariantMap performanceRange(int start,int end,int firstTrack,int endTrack,int fromTick,int limit,const QString& expected);',
   'QVariantMap navigateWorkflow(const QVariantMap& range,bool audition = false);',
