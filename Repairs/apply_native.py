@@ -31,6 +31,12 @@ def apply():
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
    if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
+ patch('mscore/CMakeLists.txt','      scoreview.cpp editharmony.cpp editfiguredbass.cpp events.cpp','      scoreview.cpp workflow/chordoverlay.cpp editharmony.cpp editfiguredbass.cpp events.cpp')
+ patch('mscore/scoreview.h','      QRectF previewEditBounds() const;','      QRectF previewEditBounds() const;\n      void paintTopChordPreview(QPainter&);')
+ patch('mscore/scoreview.cpp','      PerformanceEditor::paintForView(this, vp);','      PerformanceEditor::paintForView(this, vp);\n      paintTopChordPreview(vp);')
+ patch('mscore/scoreview.cpp','if (!box.intersects(fr) || box.intersects(protectedArea)) return;','if (entry.onTop || !box.intersects(fr) || box.intersects(protectedArea)) return;')
+ patch('mscore/plugin/qmlplugin.cpp','#include <QTimer>','#include <QTimer>\n#include <QStyle>')
+ patch('mscore/plugin/qmlplugin.cpp','qBound(80,preferred,400)','qBound(40,preferred,400)+(property("ribbonContentHeight").toBool()?_panelDock->style()->pixelMetric(QStyle::PM_TitleBarHeight):0)')
  patch('mscore/plugin/plugin.cmake','    ${PROJECT_SOURCE_DIR}/mscore/workflow/referencefactory.h','    ${PROJECT_SOURCE_DIR}/mscore/workflow/paneldock.h\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/paneldock.cpp\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/referencefactory.h')
  patch('mscore/plugin/mscorePlugins.cpp','#include "qmlplugin.h"','#include "qmlplugin.h"\n#include "mscore/workflow/paneldock.h"')
  patch('mscore/plugin/mscorePlugins.cpp','                  addDockWidget(area, dock);\n                  p->attachPanelDock(dock);','                  addDockWidget(area, dock);\n                  const bool restored=arrangeWorkflowDock(this,dock,QFileInfo(pp).completeBaseName(),p->property("preferredPanelGroup").toString(),area);\n                  p->attachPanelDock(dock);')
