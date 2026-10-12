@@ -1,0 +1,20 @@
+set(PERFORMANCEEDITOR_SRC
+      ${CMAKE_CURRENT_LIST_DIR}/performanceeditor.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performanceeditor.h
+      ${CMAKE_CURRENT_LIST_DIR}/parameteredit.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/parameteredit.h
+      ${CMAKE_CURRENT_LIST_DIR}/performanceview.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performanceview.h
+      ${CMAKE_CURRENT_LIST_DIR}/performanceselection.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performanceselection.h
+      ${CMAKE_CURRENT_LIST_DIR}/performancesettings.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performancesettings.h
+      ${CMAKE_CURRENT_LIST_DIR}/performanceoverlay.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performancepainting.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performancewheel.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performanceinteraction.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performancecontrols.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/performanceux.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/tempocurves.cpp
+      ${CMAKE_CURRENT_LIST_DIR}/envelopepreview.cpp
+      )

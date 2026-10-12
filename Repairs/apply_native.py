@@ -1,7 +1,7 @@
 # coding: utf-8
 """Apply owned additions; never run earlier release installers over newer code."""
 from pathlib import Path
-import shutil
+import hashlib,json,subprocess
 ROOT=Path(__file__).resolve().parent
 PLUGINS=ROOT.parent
 HOST=Path(r'E:\programming\funcodes\muse3_dev\MuseScore')
@@ -11,6 +11,22 @@ def patch(path,old,new):
  if s.count(old)!=1:raise RuntimeError('Cannot identify edit in '+path+': '+old[:55])
  p.write_bytes(s.replace(old,new).encode('utf8'))
 def apply():
+ state_path=ROOT/'out/applied-native.json';state_path.parent.mkdir(parents=True,exist_ok=True)
+ previous=json.loads(state_path.read_text(encoding='utf8')) if state_path.exists() else {}
+ pending=[(src,HOST/src.relative_to(ROOT/'native')) for src in (ROOT/'native').rglob('*') if src.is_file()]
+ for name in ['ReferencePlayer','PerformanceExpression','ArrangementVariants','ArrangementAssistant','HarmonyAssistant','WorkflowCommon']:
+  pending.extend((src,HOST/'share/plugins'/name/src.name) for src in (PLUGINS/name).glob('*') if src.is_file() and src.suffix in ('.qml','.js','.md'))
+ # Check all destinations before writing anything. A second task's edits must
+ # be merged deliberately rather than overwritten by a local source mirror.
+ for src,dst in pending:
+  key=dst.relative_to(HOST).as_posix()
+  if not dst.exists() or dst.read_bytes()==src.read_bytes():continue
+  current=hashlib.sha256(dst.read_bytes()).hexdigest()
+  if key in previous:
+   if current!=previous[key]:raise RuntimeError('另一个任务修改了 '+key+'；请先合并这份修改。')
+  else:
+   committed=subprocess.run(['git','show','HEAD:'+key],cwd=str(HOST),capture_output=True)
+   if committed.returncode or committed.stdout!=dst.read_bytes():raise RuntimeError('目标文件有尚未核对的修改：'+key)
  for src in (ROOT/'native').rglob('*'):
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
@@ -31,5 +47,7 @@ def apply():
    if src.is_file() and src.suffix in ('.qml','.js','.md'):
     dst=HOST/'share/plugins'/name/src.name;dst.parent.mkdir(parents=True,exist_ok=True)
     if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
- print('Current repair modules and plugins installed in source tree.')
+ updated={dst.relative_to(HOST).as_posix():hashlib.sha256(dst.read_bytes()).hexdigest() for src,dst in pending}
+ state_path.write_bytes(json.dumps(updated,indent=2,ensure_ascii=False).encode('utf8'))
+ print('本次修复模块和插件已更新到软件源码中。')
 if __name__=='__main__':apply()
