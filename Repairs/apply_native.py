@@ -40,7 +40,8 @@ def apply():
  s='\n'.join(line for line in s.splitlines() if line not in declarations)+'\n'
  anchor='      Q_INVOKABLE QVariantMap workflowStatus();'
  if s.count(anchor)!=1:raise RuntimeError('Workflow declarations changed')
- s=s.replace(anchor,anchor+'\n'+'\n'.join(declarations));p.write_bytes(s.encode('utf8'))
+ s=s.replace(anchor,anchor+'\n'+'\n'.join(declarations))
+ if p.read_bytes()!=s.encode('utf8'):p.write_bytes(s.encode('utf8'))
  patch('mscore/plugin/plugin.cmake','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.h\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.cpp')
  if 'handbracket.cpp handbracket.h tempotext.cpp' in (HOST/'libmscore/CMakeLists.txt').read_text(encoding='utf8'):
   patch('libmscore/CMakeLists.txt','handbracket.cpp handbracket.h tempotext.cpp','handbracket.cpp handbracket.h handbracketanalysis.cpp tempotext.cpp')
@@ -57,6 +58,10 @@ def apply():
  patch('mscore/inspector/inspector.cpp','#include "freeslurinspector.h"','#include "freeslurinspector.h"\n#include "../handbracketsettings.h"')
  patch('mscore/inspector/inspector.cpp','      mapSignals({h,v,width,{Pid::HAND_BRACKET_MODE,0,_mode,nullptr},{Pid::HAND_BRACKET_TEXT,0,text,nullptr}},{});','      addHandBracketDefaultControls(host,grid,inspector);\n      mapSignals({h,v,width,{Pid::HAND_BRACKET_MODE,0,_mode,nullptr},{Pid::HAND_BRACKET_TEXT,0,text,nullptr}},{});')
  patch('libmscore/CMakeLists.txt','slur.cpp freeslur.cpp tie.cpp','slur.cpp freeslur.cpp freesluravoidance.cpp tie.cpp')
+ patch('libmscore/CMakeLists.txt','undo.cpp cmd.cpp scorefile.cpp revisions.cpp','undo.cpp cmd.cpp scorefile.cpp regionalvariants.cpp regionalvariants.h revisions.cpp')
+ p=HOST/'libmscore/CMakeLists.txt';s=p.read_text(encoding='utf8');s=s.replace('set_source_files_properties(regionalvariants.cpp scorefile.cpp PROPERTIES COMPILE_FLAGS "/utf-8")','set_source_files_properties(regionalvariants.cpp scorefile.cpp PROPERTIES COMPILE_FLAGS "/execution-charset:utf-8")');encoding='\nif(MSVC)\n  set_source_files_properties(regionalvariants.cpp scorefile.cpp PROPERTIES COMPILE_FLAGS "/execution-charset:utf-8")\nendif()\n'
+ if encoding not in s:s+=encoding
+ if p.read_bytes()!=s.encode('utf8'):p.write_bytes(s.encode('utf8'))
  patch('libmscore/property.h','      HAND_BRACKET_TEXT,','      HAND_BRACKET_TEXT,\n      FREE_SLUR_AUTO,')
  patch('libmscore/property.cpp','      { Pid::HAND_BRACKET_TEXT, P_TYPE::BOOL, true, "handBracketText", "hand bracket label" },','      { Pid::HAND_BRACKET_TEXT, P_TYPE::BOOL, true, "handBracketText", "hand bracket label" },\n      { Pid::FREE_SLUR_AUTO, P_TYPE::BOOL, true, "freeSlurAuto", "free slur automatic avoidance" },')
  patch('libmscore/slur.h','      bool _freeMode = false;','      bool _freeMode = false;\n      bool _freeAuto = false;')
@@ -125,6 +130,15 @@ def apply():
   p.write_bytes((s[:end]+additions+s[end:]).encode('utf8'))
  patch('mscore/musescore.cpp','#include "inputnotationmenu.h"','#include "inputnotationmenu.h"\n#include "workflow/referencefactory.h"')
  patch('mscore/musescore.cpp','      menuTools->addAction(getAction("tap-tempo"));','      menuTools->addAction(getAction("tap-tempo"));\n      addReferenceActions(menuTools);')
+ patch('mscore/plugin/plugin.cmake','    ${PROJECT_SOURCE_DIR}/mscore/workflow/referenceworkflow.cpp','    ${PROJECT_SOURCE_DIR}/mscore/workflow/referenceworkflow.cpp\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/regionalpanel.cpp\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/regionalpanel.h')
+ patch('mscore/musescore.cpp','#include "workflow/referencefactory.h"','#include "workflow/referencefactory.h"\n#include "workflow/regionalpanel.h"')
+ patch('mscore/musescore.cpp','      QString cmdn(a->data().toString());','      QString cmdn(a->data().toString());\n#ifdef SCRIPT_INTERFACE\n      if(cmdn=="regional-variants"){showRegionalVariantPanel();return;}\n#endif')
+ patch('mscore/musescore.cpp','      addReferenceActions(menuTools);','      addReferenceActions(menuTools);\n#ifdef SCRIPT_INTERFACE\n      addRegionalVariantAction(menuTools);\n#endif')
+ p=HOST/'mscore/shortcut.cpp';s=p.read_text(encoding='utf8')
+ if '"regional-variants"' not in s:
+  at=s.index('"reference-joint-play",');end=s.index('},',at)+2
+  entry='\n        {\n           MsWidget::MAIN_WINDOW,\n           STATE_NORMAL | STATE_NOTE_ENTRY | STATE_PLAY,\n           "regional-variants",\n           QT_TRANSLATE_NOOP("action","分段试写方案"),\n           QT_TRANSLATE_NOOP("action","分段试写方案"),\n           QT_TRANSLATE_NOOP("action","在一个MSCZ中保留不同小节和声部的多种写法"),\n           Icons::play_ICON\n           },'
+  p.write_bytes((s[:end]+entry+s[end:]).encode('utf8'))
  patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newReferenceMedia();','      Q_INVOKABLE QObject* newReferenceMedia();\n      Q_INVOKABLE QObject* newReferenceProject();')
  if 'QObject* PluginAPI::newReferenceProject()' not in (HOST/'mscore/plugin/api/qmlpluginapi.cpp').read_text(encoding='utf8'):
   patch('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }\nQObject* PluginAPI::newReferenceProject() { return Ms::referenceProject(); }')
