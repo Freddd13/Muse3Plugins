@@ -35,7 +35,10 @@ def apply():
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
    if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
- patch('libmscore/CMakeLists.txt','system.cpp stringdata.cpp tempotext.cpp text.cpp','system.cpp stringdata.cpp handbracket.cpp handbracket.h tempotext.cpp text.cpp')
+ patch('mscore/plugin/plugin.cmake','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.h\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.cpp')
+ if 'handbracket.cpp handbracket.h tempotext.cpp' in (HOST/'libmscore/CMakeLists.txt').read_text(encoding='utf8'):
+  patch('libmscore/CMakeLists.txt','handbracket.cpp handbracket.h tempotext.cpp','handbracket.cpp handbracket.h handbracketanalysis.cpp tempotext.cpp')
+ patch('libmscore/CMakeLists.txt','system.cpp stringdata.cpp tempotext.cpp text.cpp','system.cpp stringdata.cpp handbracket.cpp handbracket.h handbracketanalysis.cpp tempotext.cpp text.cpp')
  patch('libmscore/symbol.h','      QPointF _handDragOriginal;','      QPointF _handDragOriginal;\n      QPointF _handBase;\n      bool _handBaseValid=false,_handLegacyAnchor=false;')
  patch('libmscore/symbol.h','      bool _handBaseValid=false,_handLegacyAnchor=false;','      bool _handBaseValid=false,_handLegacyAnchor=false;\n      bool _handGeometryEdited=false;')
  patch('mscore/CMakeLists.txt','      inputnotationmenu.h inputnotationmenu.cpp temposymbols.h temposymbols.cpp','      inputnotationmenu.h inputnotationmenu.cpp temposymbols.h temposymbols.cpp handbracketsettings.h handbracketsettings.cpp')
