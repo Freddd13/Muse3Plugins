@@ -1,7 +1,7 @@
 # coding: utf-8
 """Apply owned additions; never run earlier release installers over newer code."""
 from pathlib import Path
-import hashlib,json,subprocess
+import hashlib,json,subprocess,sys
 ROOT=Path(__file__).resolve().parent
 PLUGINS=ROOT.parent
 HOST=Path(r'E:\programming\funcodes\muse3_dev\MuseScore')
@@ -14,7 +14,11 @@ def apply():
  state_path=ROOT/'out/applied-native.json';state_path.parent.mkdir(parents=True,exist_ok=True)
  previous=json.loads(state_path.read_text(encoding='utf8')) if state_path.exists() else {}
  pending=[(src,HOST/src.relative_to(ROOT/'native')) for src in (ROOT/'native').rglob('*') if src.is_file()]
- for name in ['ReferencePlayer','PerformanceExpression','ArrangementVariants','ArrangementAssistant','HarmonyAssistant','WorkflowCommon']:
+ excluded=set()
+ for i,arg in enumerate(sys.argv[:-1]):
+  if arg=='--exclude-plugin':excluded.add(sys.argv[i+1])
+ plugin_names=[name for name in ['ReferencePlayer','PerformanceExpression','ArrangementVariants','ArrangementAssistant','HarmonyAssistant','WorkflowCommon'] if name not in excluded]
+ for name in plugin_names:
   pending.extend((src,HOST/'share/plugins'/name/src.name) for src in (PLUGINS/name).glob('*') if src.is_file() and src.suffix in ('.qml','.js','.md'))
  # Check all destinations before writing anything. A second task's edits must
  # be merged deliberately rather than overwritten by a local source mirror.
@@ -31,6 +35,18 @@ def apply():
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
    if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
+ patch('libmscore/CMakeLists.txt','system.cpp stringdata.cpp tempotext.cpp text.cpp','system.cpp stringdata.cpp handbracket.cpp handbracket.h tempotext.cpp text.cpp')
+ patch('libmscore/symbol.h','      QPointF _handDragOriginal;','      QPointF _handDragOriginal;\n      QPointF _handBase;\n      bool _handBaseValid=false,_handLegacyAnchor=false;')
+ patch('libmscore/symbol.h','      bool _handBaseValid=false,_handLegacyAnchor=false;','      bool _handBaseValid=false,_handLegacyAnchor=false;\n      bool _handGeometryEdited=false;')
+ patch('mscore/CMakeLists.txt','      inputnotationmenu.h inputnotationmenu.cpp temposymbols.h temposymbols.cpp','      inputnotationmenu.h inputnotationmenu.cpp temposymbols.h temposymbols.cpp handbracketsettings.h handbracketsettings.cpp')
+ patch('mscore/menus.cpp','#include "temposymbols.h"','#include "temposymbols.h"\n#include "handbracketsettings.h"')
+ patch('mscore/menus.cpp','      for (auto id : {SymId::keyboardPlayWithLH,SymId::keyboardPlayWithRH}) {','      loadHandBracketDefaults();\n      for (auto id : {SymId::keyboardPlayWithLH,SymId::keyboardPlayWithRH}) {')
+ patch('mscore/menus.cpp','            sp->append(symbol,id==SymId::keyboardPlayWithLH ? QT_TRANSLATE_NOOP("Palette", "左手弹（可伸缩）") : QT_TRANSLATE_NOOP("Palette", "右手弹（可伸缩）"));','            sp->append(symbol,id==SymId::keyboardPlayWithLH ? QT_TRANSLATE_NOOP("Palette", "左手弹（可伸缩）") : QT_TRANSLATE_NOOP("Palette", "右手弹（可伸缩）"),QString(),.65);')
+ patch('mscore/menus.cpp','      return sp;\n      }\n\n//---------------------------------------------------------\n//   newTremoloPalettePanel','      completeHandBracketPalette(sp);\n      return sp;\n      }\n\n//---------------------------------------------------------\n//   newTremoloPalettePanel')
+ patch('mscore/palette/palettetree.cpp','#include "../temposymbols.h"','#include "../temposymbols.h"\n#include "../handbracketsettings.h"')
+ patch('mscore/palette/palettetree.cpp','      appendPlayableTempoSymbols(this);','      appendPlayableTempoSymbols(this);\n      completeHandBracketPalette(this);')
+ patch('mscore/inspector/inspector.cpp','#include "freeslurinspector.h"','#include "freeslurinspector.h"\n#include "../handbracketsettings.h"')
+ patch('mscore/inspector/inspector.cpp','      mapSignals({h,v,width,{Pid::HAND_BRACKET_MODE,0,_mode,nullptr},{Pid::HAND_BRACKET_TEXT,0,text,nullptr}},{});','      addHandBracketDefaultControls(host,grid,inspector);\n      mapSignals({h,v,width,{Pid::HAND_BRACKET_MODE,0,_mode,nullptr},{Pid::HAND_BRACKET_TEXT,0,text,nullptr}},{});')
  patch('libmscore/CMakeLists.txt','slur.cpp freeslur.cpp tie.cpp','slur.cpp freeslur.cpp freesluravoidance.cpp tie.cpp')
  patch('libmscore/property.h','      HAND_BRACKET_TEXT,','      HAND_BRACKET_TEXT,\n      FREE_SLUR_AUTO,')
  patch('libmscore/property.cpp','      { Pid::HAND_BRACKET_TEXT, P_TYPE::BOOL, true, "handBracketText", "hand bracket label" },','      { Pid::HAND_BRACKET_TEXT, P_TYPE::BOOL, true, "handBracketText", "hand bracket label" },\n      { Pid::FREE_SLUR_AUTO, P_TYPE::BOOL, true, "freeSlurAuto", "free slur automatic avoidance" },')
@@ -81,7 +97,7 @@ def apply():
  patch('mscore/plugin/api/scoreobserver.h','      Q_INVOKABLE QVariantMap workflowStatus();','      Q_INVOKABLE QVariantMap workflowStatus();\n      Q_INVOKABLE QVariantMap stopWorkflowPlayback();')
  patch('mscore/workflow/scoreworkflow.cpp','QVariantMap ScoreObserver::workflowStatus() {','QVariantMap ScoreObserver::stopWorkflowPlayback() {\n if(seq&&seq->isPlaying())seq->stopWait();\n if(seq&&(!seq->backgroundRenderingIdle()||seq->isPlaying()))return {{"error","waiting for stop/render"}};\n return {{"ok",true}};\n}\nQVariantMap ScoreObserver::workflowStatus() {')
  patch('mscore/workflow/scoreworkflow.cpp',' if(element){_score->select(element,SelectType::SINGLE,track/VOICES);view->adjustCanvasPosition(element,false);}',' if(range.contains("index")){auto note=resolve(range);if(!note)return {{"error","stale note; read the score again"}};element=note;}\n if(element){_score->select(element,SelectType::SINGLE,track/VOICES);view->adjustCanvasPosition(element,false);}')
- for name in ['ReferencePlayer','PerformanceExpression','ArrangementVariants','ArrangementAssistant','HarmonyAssistant','WorkflowCommon']:
+ for name in plugin_names:
   for src in (PLUGINS/name).glob('*'):
    if src.is_file() and src.suffix in ('.qml','.js','.md'):
     dst=HOST/'share/plugins'/name/src.name;dst.parent.mkdir(parents=True,exist_ok=True)
