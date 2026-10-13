@@ -35,6 +35,12 @@ def apply():
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
    if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
+ p=HOST/'mscore/plugin/api/scoreobserver.h';s=p.read_text(encoding='utf8')
+ declarations=['      Q_INVOKABLE QVariantMap stopWorkflowPlayback();','      Q_INVOKABLE QVariantMap referencePlan(const QVariantMap&);','      Q_INVOKABLE QVariantMap startReferencePlayback(const QVariantMap&);','      Q_INVOKABLE QVariantMap stopReferencePlayback();','      Q_INVOKABLE QVariantMap setEditorComparison(const QVariantMap&);','      Q_INVOKABLE QVariantMap setReferenceTracks(const QVariantList&);']
+ s='\n'.join(line for line in s.splitlines() if line not in declarations)+'\n'
+ anchor='      Q_INVOKABLE QVariantMap workflowStatus();'
+ if s.count(anchor)!=1:raise RuntimeError('Workflow declarations changed')
+ s=s.replace(anchor,anchor+'\n'+'\n'.join(declarations));p.write_bytes(s.encode('utf8'))
  patch('mscore/plugin/plugin.cmake','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.h\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.cpp')
  if 'handbracket.cpp handbracket.h tempotext.cpp' in (HOST/'libmscore/CMakeLists.txt').read_text(encoding='utf8'):
   patch('libmscore/CMakeLists.txt','handbracket.cpp handbracket.h tempotext.cpp','handbracket.cpp handbracket.h handbracketanalysis.cpp tempotext.cpp')
@@ -100,6 +106,45 @@ def apply():
  patch('mscore/plugin/api/scoreobserver.h','      Q_INVOKABLE QVariantMap workflowStatus();','      Q_INVOKABLE QVariantMap workflowStatus();\n      Q_INVOKABLE QVariantMap stopWorkflowPlayback();')
  patch('mscore/workflow/scoreworkflow.cpp','QVariantMap ScoreObserver::workflowStatus() {','QVariantMap ScoreObserver::stopWorkflowPlayback() {\n if(seq&&seq->isPlaying())seq->stopWait();\n if(seq&&(!seq->backgroundRenderingIdle()||seq->isPlaying()))return {{"error","waiting for stop/render"}};\n return {{"ok",true}};\n}\nQVariantMap ScoreObserver::workflowStatus() {')
  patch('mscore/workflow/scoreworkflow.cpp',' if(element){_score->select(element,SelectType::SINGLE,track/VOICES);view->adjustCanvasPosition(element,false);}',' if(range.contains("index")){auto note=resolve(range);if(!note)return {{"error","stale note; read the score again"}};element=note;}\n if(element){_score->select(element,SelectType::SINGLE,track/VOICES);view->adjustCanvasPosition(element,false);}')
+ if 'workflow/referencebus.cpp' not in (HOST/'mscore/CMakeLists.txt').read_text(encoding='utf8'):
+  patch('mscore/CMakeLists.txt','      seq.cpp textpalette.cpp','      seq.cpp workflow/referencebus.cpp workflow/referencebus.h textpalette.cpp')
+ patch('mscore/CMakeLists.txt','      seq.cpp workflow/referencebus.cpp workflow/referencebus.h textpalette.cpp','      seq.cpp workflow/referencebus.cpp workflow/referencebus.h workflow/workflowcontext.cpp workflow/workflowcontext.h textpalette.cpp')
+ patch('mscore/CMakeLists.txt','    include(${CMAKE_CURRENT_LIST_DIR}/plugin/plugin.cmake)\nendif (SCRIPT_INTERFACE)','    include(${CMAKE_CURRENT_LIST_DIR}/plugin/plugin.cmake)\nelse (SCRIPT_INTERFACE)\n    set(PLUGIN_API_SRC ${CMAKE_CURRENT_LIST_DIR}/workflow/referencefactory.cpp ${CMAKE_CURRENT_LIST_DIR}/workflow/referencefactory.h)\nendif (SCRIPT_INTERFACE)')
+ patch('mscore/performanceeditor/performanceeditor.cmake','      ${CMAKE_CURRENT_LIST_DIR}/envelopepreview.cpp','      ${CMAKE_CURRENT_LIST_DIR}/envelopepreview.cpp\n      ${CMAKE_CURRENT_LIST_DIR}/workflowlanes.h\n      ${CMAKE_CURRENT_LIST_DIR}/workflowlanes.cpp')
+ patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newReferenceProject();','      Q_INVOKABLE QObject* newReferenceProject();\n      Q_INVOKABLE QObject* newWorkflowContext();')
+ patch('mscore/plugin/api/qmlpluginapi.cpp','#include "mscore/workflow/referencefactory.h"','#include "mscore/workflow/referencefactory.h"\n#include "mscore/workflow/workflowcontext.h"')
+ patch('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newReferenceProject() { return Ms::referenceProject(); }','QObject* PluginAPI::newReferenceProject() { return Ms::referenceProject(); }\nQObject* PluginAPI::newWorkflowContext() { return Ms::workflowContext(); }')
+ patch('mscore/plugin/api/scoreobserver.h','      Q_INVOKABLE QVariantMap stopReferencePlayback();','      Q_INVOKABLE QVariantMap stopReferencePlayback();\n      Q_INVOKABLE QVariantMap setEditorComparison(const QVariantMap&);')
+ patch('mscore/plugin/plugin.cmake','    ${PROJECT_SOURCE_DIR}/mscore/workflow/referencefactory.cpp','    ${PROJECT_SOURCE_DIR}/mscore/workflow/referencefactory.cpp\n    ${PROJECT_SOURCE_DIR}/mscore/workflow/referenceworkflow.cpp')
+ p=HOST/'mscore/shortcut.cpp';s=p.read_text(encoding='utf8')
+ if '"reference-audio-play"' not in s:
+  at=s.index('"tap-tempo",');end=s.index('},',at)+2
+  additions=''
+  for name,label,description in [('reference-audio-play','播放／停止选定原曲片段','在原曲参考中选择音轨和片段后，独立播放音频'),('reference-joint-play','联合播放／停止','按照原曲参考里选定的方式播放乐谱和参加播放的音轨')]:
+   additions+='\n        {\n           MsWidget::MAIN_WINDOW,\n           STATE_NORMAL | STATE_NOTE_ENTRY | STATE_PLAY,\n           "'+name+'",\n           QT_TRANSLATE_NOOP("action","'+label+'"),\n           QT_TRANSLATE_NOOP("action","'+label+'"),\n           QT_TRANSLATE_NOOP("action","'+description+'"),\n           Icons::play_ICON\n           },'
+  p.write_bytes((s[:end]+additions+s[end:]).encode('utf8'))
+ patch('mscore/musescore.cpp','#include "inputnotationmenu.h"','#include "inputnotationmenu.h"\n#include "workflow/referencefactory.h"')
+ patch('mscore/musescore.cpp','      menuTools->addAction(getAction("tap-tempo"));','      menuTools->addAction(getAction("tap-tempo"));\n      addReferenceActions(menuTools);')
+ patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newReferenceMedia();','      Q_INVOKABLE QObject* newReferenceMedia();\n      Q_INVOKABLE QObject* newReferenceProject();')
+ if 'QObject* PluginAPI::newReferenceProject()' not in (HOST/'mscore/plugin/api/qmlpluginapi.cpp').read_text(encoding='utf8'):
+  patch('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }\nQObject* PluginAPI::newReferenceProject() { return Ms::referenceProject(); }')
+ patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newWorkflowContext();','      Q_INVOKABLE QObject* newWorkflowContext();\n      Q_INVOKABLE void releaseReferenceMedia(QObject*);')
+ patch('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }','QObject* PluginAPI::newReferenceMedia() { auto media=Ms::createReferenceMedia(this);media->setProperty("kumoReferenceOwned",true);return media; }\nvoid PluginAPI::releaseReferenceMedia(QObject* media) { if(media&&media->parent()==this&&media->property("kumoReferenceOwned").toBool())media->deleteLater(); }')
+ patch('mscore/seq.cpp','#include "seq.h"','#include "seq.h"\n#include "workflow/referencebus.h"')
+ patch('mscore/seq.cpp','      float* p = buffer;','      ReferenceAudioPeriod referencePeriod(buffer,framesPerPeriod,playFrame,state==Transport::PLAY && !inCountIn);\n      float* p = buffer;')
+ patch('mscore/seq.cpp','qreal playPosSeconds = PlaybackTiming::time(cs, playPosUTick);','qreal playPosSeconds = referenceOutputTime(PlaybackTiming::time(cs, playPosUTick));')
+ patch('mscore/seq.cpp','playFrame < PlaybackTiming::time(cs, _preRollTarget) * MScore::sampleRate','playFrame < referenceOutputTime(PlaybackTiming::time(cs, _preRollTarget)) * MScore::sampleRate')
+ patch('mscore/seq.cpp','playFrame = PlaybackTiming::time(cs, from) * MScore::sampleRate;','playFrame = referenceOutputTime(PlaybackTiming::time(cs, from)) * MScore::sampleRate;')
+ patch('mscore/seq.cpp','            int scoreEndUTick = cs->repeatList().tick2utick(cs->lastMeasure()->endTick().ticks());','            const int referenceStopTick=inCountIn?-1:referenceEndTick();\n            const int referenceStopFrame=referenceStopTick<0?-1:int(referenceOutputTime(PlaybackTiming::time(cs,referenceStopTick))*MScore::sampleRate);\n            if(referenceStopFrame>=0)periodEndFrame=qMin(periodEndFrame,referenceStopFrame);\n            int scoreEndUTick = cs->repeatList().tick2utick(cs->lastMeasure()->endTick().ticks());')
+ patch('mscore/seq.cpp','                        metronome(framesRemain, p, inCountIn);\n                        _synti->process(framesRemain, p);','                        const unsigned before=referenceStopFrame<0?framesRemain:unsigned(qBound(0,referenceStopFrame-*pPlayFrame,int(framesRemain)));\n                        if(before){metronome(before,p,inCountIn);_synti->process(before,p);}\n                        if(referenceStopFrame>=0&&*pPlayFrame+int(before)>=referenceStopFrame){stopNotes(-1,true);stopTransport();}\n                        if(before<framesRemain)_synti->process(framesRemain-before,p+before*2);')
+ p=HOST/'mscore/seq.cpp';s=p.read_text(encoding='utf8');old='cs->utime2utick(qreal(playFrame) / qreal(MScore::sampleRate))';new='cs->utime2utick(referenceScoreTime(qreal(playFrame) / qreal(MScore::sampleRate)))'
+ if old in s:
+  if s.count(old)!=3:raise RuntimeError('Seq playback position sites changed')
+  p.write_bytes(s.replace(old,new).encode('utf8'))
+ s=p.read_text(encoding='utf8');period='      ReferenceAudioPeriod referencePeriod(buffer,framesPerPeriod,playFrame,state==Transport::PLAY && !inCountIn);\n'
+ s=s.replace(period,'');anchor='      processMessages();\n'
+ if s.count(anchor)!=1:raise RuntimeError('Seq period preparation changed')
+ p.write_bytes(s.replace(anchor,anchor+period).encode('utf8'))
  for name in plugin_names:
   for src in (PLUGINS/name).glob('*'):
    if src.is_file() and src.suffix in ('.qml','.js','.md'):
