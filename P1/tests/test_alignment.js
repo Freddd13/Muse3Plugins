@@ -19,6 +19,10 @@ let wrong=performance.map(n=>Object.assign({},n));wrong[3].pitch=66;let r=run("w
 run("tap-any-pitch",performance.map(n=>Object.assign({},n,{pitch:40})),{mode:"tap"},8);
 run("tap-missed-recovery",performance.filter(n=>n.id!=="m3").map(n=>Object.assign({},n,{pitch:40})),{mode:"tap",anchors:[{scoreId:"s4",midiId:"m4"}]},7);
 run("manual-confirm",wrong,{links:[{scoreId:"s3",midiId:"m3"}]},8);
+const prefix=Array.from({length:500},(_,i)=>({id:"prefix"+i,pitch:40+i%4,seconds:i*.5,velocity:50}));
+const passage=performance.map(n=>Object.assign({},n,{seconds:n.seconds+260}));
+let found=run("whole-midi-selected-passage",prefix.concat(passage).concat([{id:"tail",pitch:33,seconds:270,velocity:50}]),{},8);
+assert(found.passage.from>=260&&found.passage.until<270);
 r=run("manual-disconnect",performance,{links:[{scoreId:"s3",midiId:"m3",disabled:true}]},7);assert(r.missing.some(n=>n.id==="s3"));assert(r.extra.some(n=>n.id==="m3"));
 assert.throws(()=>ctx.align({notes,performance,anchors:[{scoreId:"s2",midiId:"m4"},{scoreId:"s4",midiId:"m2"}]}));
 let poly=notes.concat([Object.assign({},notes[2],{id:"s2b",logicalId:"s2b",track:4}),Object.assign({},notes[3],{id:"tie",logicalId:"s2",tieBack:true})]);
@@ -26,6 +30,8 @@ r=ctx.align({notes:poly,performance:performance.concat([{id:"m2b",pitch:64,secon
 let protectedResult=ctx.align({notes:notes.map(n=>Object.assign({},n,{protected:n.id==="s3"})),performance});
 let c=ctx.candidates({result:protectedResult,notes,revision:"1",scope:{start:0,end:3840},config:{strength:50,velocity:true,rubato:true,keepDuration:true}});
 assert.strictEqual(c.velocity.length,7);assert(c.kept.some(n=>n.id==="s3"));assert(c.tempos.length>2);assert(c.tempos.every(n=>n.bpm>=5&&n.bpm<=999));assert.strictEqual(c.tempos[0].bpm,120);assert.strictEqual(c.tempos[c.tempos.length-1].bpm,120);
+c=ctx.candidates({result:protectedResult,notes,scope:{start:0,end:3840},config:{velocity:true,keepManual:false}});
+assert.strictEqual(c.velocity.length,8);assert(c.velocity.find(n=>n.id==='s3').unlock);
 c=ctx.candidates({result:protectedResult,config:{strength:0,velocity:true}});assert(c.velocity.every(n=>n.target===80));
 const repeated=ctx.align({notes,performance:performance.concat(performance.map(n=>Object.assign({},n,{id:"second"+n.id,seconds:n.seconds+5}))),repeats:[{tick:0,end:3840,utick:0},{tick:0,end:3840,utick:3840}],occurrence:0});assert.strictEqual(repeated.matches.length,16);assert(repeated.matches.some(m=>m.scoreId==="s0@2"));
 const cached=ctx.align({notes,performance,cacheKey:"stable"});const reused=ctx.align({notes,performance,cacheKey:"stable",previousKey:"stable",segments:cached.segments,links:[{scoreId:"s3",midiId:"m3"}]});assert.strictEqual(reused.matches.length,8);

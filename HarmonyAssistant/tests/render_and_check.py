@@ -97,7 +97,7 @@ fixture=r'''
         stopColoring()
         curScore.selection.elements=[]
         refreshSelection()
-        check(currentNotes.length===0 && chordRoot===-1,"empty selection clears display")
+        check(currentNotes.length===6 && currentTick===480,"empty selection keeps current harmonic position")
         curScore.selection.elements=[fixtureNotes[3]]
         refreshSelection()
         while(buildTimer.running)buildChunk()

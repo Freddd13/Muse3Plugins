@@ -4,6 +4,11 @@ base=Path(__file__).resolve().parent
 script=(base/'test_modern_panel.py').read_text(encoding='utf-8')
 add=r'''
 script=script.replace('    function fixture()',r"""
+    property bool summaryPanelVisible:false
+    property var summaryPanelHost:fixtureSummary.contentItem
+    signal panelSummaryClosed()
+    Window {id:fixtureSummary; objectName:"fixtureSummary"; width:1100; height:28; visible:root.summaryPanelVisible}
+    function showSummaryPanel(show){summaryPanelVisible=show}
     property bool detailPanelVisible:false
     property var detailPanelHost:fixtureDetails.contentItem
     signal panelDetailClosed()
@@ -43,7 +48,7 @@ def dual_check():
 
 def dual_narrow():
  group=root.findChild(QQuickItem,'harmonyRibbonGroup')
- assert group.x()>100,'narrow summary should remain centered'
+ assert group.x()>=12,'summary must retain the left margin'
  assert group.x()+group.width()<root.width()-124,'summary overlaps controls'
  image=window.grabWindow();assert not image.isNull();image.save(str(HERE/'panel-dual-ribbon-narrow.png'))
  invoke('toggleDetailPanel')
@@ -67,7 +72,19 @@ def dual_sidebar():
  assert not root.property('ribbon')
  assert not root.property('detailPanelVisible')
  assert root.findChild(QQuickItem,'harmonySummary').window() is window
- print('Shared detail surface: top/side simultaneous, toggle, close and redock passed')
+ invoke('toggleDetailPanel')
+ QTimer.singleShot(50,dual_independent)
+
+def dual_independent():
+ assert root.property('dualSummaryActive')
+ group=root.findChild(QQuickItem,'harmonyRibbonGroup')
+ summary_window=next(w for w in QGuiApplication.allWindows() if w.objectName()=='fixtureSummary')
+ assert group.window() is summary_window
+ assert root.findChild(QQuickItem,'harmonySummary').window() is window
+ image=summary_window.grabWindow();assert not image.isNull();image.save(str(HERE/'panel-independent-summary.png'))
+ root.setVisible(False)
+ assert root.property('surfaceActive'),'visible top summary must keep analysis active'
+ print('Shared windows: independent top/side summary, hide, toggle, close and redock passed')
  app.quit()
 """
 script=script.replace('QTimer.singleShot(500,checks)',extra+chr(10)+'QTimer.singleShot(500,checks)')

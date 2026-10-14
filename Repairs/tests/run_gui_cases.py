@@ -47,5 +47,8 @@ try:
     status = result.returncode
 except subprocess.TimeoutExpired:
     status = 124
-print(log.read_text(encoding='utf-8', errors='replace').encode('ascii', errors='backslashreplace').decode('ascii'))
+if log.exists():
+    print(log.read_text(encoding='utf-8', errors='replace').encode('ascii', errors='backslashreplace').decode('ascii'))
+else:
+    print('The test process exited before Qt could start, exit code:', status)
 sys.exit(status)
