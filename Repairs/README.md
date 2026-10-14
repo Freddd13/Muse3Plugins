@@ -1,11 +1,9 @@
-# 本轮修复代码与验证
+# 集中修复代码与操作记录
 
-这些文件对应用户批准的六批修复。最新进度见 `Planning/REPAIR_IMPLEMENTATION.md`。软件本体仍以 `E:/programming/funcodes/muse3_dev/MuseScore` 为正式仓库。
+正式软件源码位于 `E:/programming/funcodes/muse3_dev/MuseScore`。本次修复进度见 [实施记录](../Planning/REPAIR_2026_10_IMPLEMENTATION.md)，使用方法见 [功能说明](USER_GUIDE.md)。
 
-`native/` 保存本轮新增或修改的原生文件。`apply_native.py` 只复制这里列出的文件、项目插件，并修改必需的少量接线。复制前核对目标文件；发现另一个任务的修改就停止，先合并，避免覆盖。
+0.43 修复了日常编辑、菜单和速度标记；0.44 整理了和弦窗口、分手折线与演奏表达；0.45 增加 MIDI 录制。后续继续处理音乐算法、松手安排和分段方案连接。
 
-`prepare_*.py`、`editor_wiring.py`、`editor_finish.py`、`finish_copy_context.py` 和各发布脚本都是相应批次开发时的准备记录；不要拿它们重新生成当前模块。已有 `P0`、`P1` 安装脚本也不要覆盖较新的源码。今后以正式仓库和这里的最新文件为准。
+`native/` 保存对应的独立模块与修改文件。`apply_native.py` 核对目标文件后复制这些模块，并补上必要接线；`midi-recording-host.patch` 保存 0.44 到 0.45 的输入接线。目标已有其它改动时先合并，再应用。
 
-验证使用 `P1/tests/run_native_regressions.py`，测试的配置、素材和程序副本放在临时目录。`tests/run_gui_cases.py` 可在已有程序及 Qt 资源中运行指定的鼠标操作测试。报告、构建输出和过程图片放在 `out/`，不作为功能已经完成的证明；只有检查通过并记录实际结果后才发布。
-
-当前已发布 0.32.0–0.38.0；演奏编辑器、和弦显示、Tap速度标记联动和输入净谱和自由圆滑线自动避让及相关验证已完成。音乐记谱、和弦算法、多音频联动和分段方案仍按后续批次继续。
+`prepare_*.py` 和各发布脚本保留每批开发过程。更新正式源码时使用当前文件和 Git 提交记录。`tests/run_gui_cases.py` 用独立设置运行真实 Qt 窗口，支持指定测试项。编译输出、操作图片和完整结果保存在 `out/`；每批结果也写入正式仓库的 `personal/docs/`。

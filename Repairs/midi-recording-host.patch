@@ -1,0 +1,175 @@
+diff --git a/audiodrivers/mididriver.cpp b/audiodrivers/mididriver.cpp
+index 2e9ac2975..ebf6f5f84 100644
+--- a/audiodrivers/mididriver.cpp
++++ b/audiodrivers/mididriver.cpp
+@@ -35,6 +35,9 @@
+ #include "mscore/musescore.h"
+ #include "mscore/globals.h"
+ #include "mscore/seq.h"
++#ifdef SCRIPT_INTERFACE
++#include "mscore/workflow/midicapture.h"
++#endif
+
+ namespace Ms {
+
+@@ -395,6 +398,15 @@ void AlsaMidiDriver::read()
+                   return;
+                   }
+
++            #ifdef SCRIPT_INTERFACE
++            NPlayEvent captured;
++            if(ev->type==SND_SEQ_EVENT_NOTEON||ev->type==SND_SEQ_EVENT_NOTEOFF)
++                  captured=NPlayEvent(ev->type==SND_SEQ_EVENT_NOTEON?ME_NOTEON:ME_NOTEOFF,ev->data.note.channel,ev->data.note.note,ev->data.note.velocity);
++            else if(ev->type==SND_SEQ_EVENT_CONTROLLER)
++                  captured=NPlayEvent(ME_CONTROLLER,ev->data.control.channel,ev->data.control.param,ev->data.control.value);
++            if(captured.type()!=ME_INVALID&&captureMidiInput(captured,midiInputTime())){snd_seq_free_event(ev);continue;}
++            #endif
++
+             if (ev->type == SND_SEQ_EVENT_NOTEON) {
+                   int pitch = ev->data.note.note;
+                   int velo  = ev->data.note.velocity;
+diff --git a/audiodrivers/pm.cpp b/audiodrivers/pm.cpp
+index c929e68b4..159b2ef86 100644
+--- a/audiodrivers/pm.cpp
++++ b/audiodrivers/pm.cpp
+@@ -32,6 +32,9 @@
+ #include "mscore/preferences.h"
+ #include "mscore/musescore.h"
+ #include "mscore/seq.h"
++#ifdef SCRIPT_INTERFACE
++#include "mscore/workflow/midicapture.h"
++#endif
+
+ namespace Ms {
+
+@@ -182,12 +185,20 @@ void PortMidiDriver::read()
+       if (!inputStream)
+             return;
+       PmEvent buffer[1];
+-      while (Pm_Poll(inputStream)) {
++      int ready;
++      while ((ready = Pm_Poll(inputStream)) == TRUE) {
+             int n = Pm_Read(inputStream, buffer, 1);
+             if (n > 0) {
+                   int status  = Pm_MessageStatus(buffer[0].message);
+                   int type    = status & 0xF0;
+                   int channel = status & 0x0F;
++                  #ifdef SCRIPT_INTERFACE
++                  // PortMidi timestamps use Pt_Time, including its 32-bit wrap.
++                  const qint32 age=qint32(quint32(Pt_Time())-quint32(buffer[0].timestamp));
++                  const qint64 timestamp=midiInputTime()-qint64(qMax(0,age))*1000000;
++                  NPlayEvent captured(type,channel,Pm_MessageData1(buffer[0].message),Pm_MessageData2(buffer[0].message));
++                  if(captureMidiInput(captured,timestamp))continue;
++                  #endif
+                   if (type == ME_NOTEON) {
+                         int pitch = Pm_MessageData1(buffer[0].message);
+                         int velo = Pm_MessageData2(buffer[0].message);
+@@ -204,7 +215,13 @@ void PortMidiDriver::read()
+                         mscore->midiCtrlReceived(param, value);
+                         }
+                   }
++            #ifdef SCRIPT_INTERFACE
++            else if(n<0)stopMidiCaptureInput(QObject::tr("MIDI 输入连接中断，已保留收到的演奏"));
++            #endif
+             }
++      #ifdef SCRIPT_INTERFACE
++      if(ready<0)stopMidiCaptureInput(QObject::tr("MIDI 输入连接中断，已保留收到的演奏"));
++      #endif
+       }
+
+ //---------------------------------------------------------
+diff --git a/mscore/plugin/api/qmlpluginapi.cpp b/mscore/plugin/api/qmlpluginapi.cpp
+index 503687027..5141645c4 100644
+--- a/mscore/plugin/api/qmlpluginapi.cpp
++++ b/mscore/plugin/api/qmlpluginapi.cpp
+@@ -23,6 +23,7 @@
+ #include "scoreobserver.h"
+ #include "mscore/workflow/referencefactory.h"
+ #include "mscore/workflow/workflowcontext.h"
++#include "mscore/workflow/midicapture.h"
+ #include "selection.h"
+ #include "shortcut.h"
+ #include "tie.h"
+@@ -270,6 +271,7 @@ QObject* PluginAPI::newReferenceMedia() { auto media=Ms::createReferenceMedia(th
+ void PluginAPI::releaseReferenceMedia(QObject* media) { if(media&&media->parent()==this&&media->property("kumoReferenceOwned").toBool())media->deleteLater(); }
+ QObject* PluginAPI::newReferenceProject() { return Ms::referenceProject(); }
+ QObject* PluginAPI::newWorkflowContext() { return Ms::workflowContext(); }
++QObject* PluginAPI::newMidiCaptureSession() { return new Ms::MidiCaptureSession(this); }
+
+ QObject* PluginAPI::newScoreObserver()
+       {
+diff --git a/mscore/plugin/api/qmlpluginapi.h b/mscore/plugin/api/qmlpluginapi.h
+index 1595e05e6..16e46af98 100644
+--- a/mscore/plugin/api/qmlpluginapi.h
++++ b/mscore/plugin/api/qmlpluginapi.h
+@@ -255,6 +255,7 @@ class PluginAPI : public Ms::QmlPlugin {
+       Q_INVOKABLE QObject* newReferenceMedia();
+       Q_INVOKABLE QObject* newReferenceProject();
+       Q_INVOKABLE QObject* newWorkflowContext();
++      Q_INVOKABLE QObject* newMidiCaptureSession();
+       Q_INVOKABLE void releaseReferenceMedia(QObject*);
+       Q_INVOKABLE bool writeScore(Ms::PluginAPI::Score*, const QString& name, const QString& ext);
+       Q_INVOKABLE Ms::PluginAPI::Score* readScore(const QString& name, bool noninteractive = false);
+diff --git a/mscore/plugin/plugin.cmake b/mscore/plugin/plugin.cmake
+index 871a2c590..8b78d1316 100644
+--- a/mscore/plugin/plugin.cmake
++++ b/mscore/plugin/plugin.cmake
+@@ -7,6 +7,8 @@ set (PLUGIN_API_SRC
+     ${PROJECT_SOURCE_DIR}/mscore/workflow/referenceworkflow.cpp
+     ${PROJECT_SOURCE_DIR}/mscore/workflow/regionalpanel.cpp
+     ${PROJECT_SOURCE_DIR}/mscore/workflow/regionalpanel.h
++    ${PROJECT_SOURCE_DIR}/mscore/workflow/midicapture.h
++    ${PROJECT_SOURCE_DIR}/mscore/workflow/midicapture.cpp
+     ${PROJECT_SOURCE_DIR}/mscore/workflow/midiinput.h
+     ${PROJECT_SOURCE_DIR}/mscore/workflow/midiinput.cpp
+     ${PROJECT_SOURCE_DIR}/mscore/workflow/scoreworkflow.cpp
+diff --git a/mscore/seq.cpp b/mscore/seq.cpp
+index cf272750a..40ff5f4b0 100644
+--- a/mscore/seq.cpp
++++ b/mscore/seq.cpp
+@@ -28,6 +28,9 @@
+ #include "scoreview.h"
+ #include "seq.h"
+ #include "workflow/referencebus.h"
++#ifdef SCRIPT_INTERFACE
++#include "workflow/midicapture.h"
++#endif
+ #include "synthcontrol.h"
+
+ #include "audio/midi/msynthesizer.h"
+@@ -2509,7 +2512,11 @@ void Seq::guiToSeq(const SeqMsg& msg)
+
+ void Seq::eventToGui(NPlayEvent e)
+       {
+-      fromSeq.enqueue(SeqMsg(SeqMsgId::MIDI_INPUT_EVENT, e));
++      SeqMsg message(SeqMsgId::MIDI_INPUT_EVENT, e);
++      #ifdef SCRIPT_INTERFACE
++      message.inputTimestamp = midiInputTime();
++      #endif
++      fromSeq.enqueue(message);
+       }
+
+ //---------------------------------------------------------
+@@ -2611,6 +2618,10 @@ void Seq::heartBeatTimeout()
+       while (!fromSeq.empty()) {
+             SeqMsg msg = fromSeq.dequeue();
+             if (msg.id == SeqMsgId::MIDI_INPUT_EVENT) {
++                  #ifdef SCRIPT_INTERFACE
++                  if (captureMidiInput(msg.event, msg.inputTimestamp))
++                        continue;
++                  #endif
+                   int type = msg.event.type();
+                   if (type == ME_NOTEON)
+                         mscore->midiNoteReceived(msg.event.channel(), msg.event.pitch(), msg.event.velo());
+diff --git a/mscore/seq.h b/mscore/seq.h
+index b6b3b94ae..8fb5b3709 100644
+--- a/mscore/seq.h
++++ b/mscore/seq.h
+@@ -78,6 +78,7 @@ struct SeqMsg {
+             };
+       int intVal2 { 0 };
+       NPlayEvent event;
++      qint64 inputTimestamp { 0 };
+
+       SeqMsg() {}
+       SeqMsg(SeqMsgId _id, int val) : id(_id), intVal(val) {}

@@ -164,6 +164,13 @@ def apply():
    if src.is_file() and src.suffix in ('.qml','.js','.md'):
     dst=HOST/'share/plugins'/name/src.name;dst.parent.mkdir(parents=True,exist_ok=True)
     if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
+ recording_patch=ROOT/'midi-recording-host.patch'
+ if recording_patch.exists():
+  already=subprocess.run(['git','apply','--reverse','--check',str(recording_patch)],cwd=str(HOST),capture_output=True)
+  if already.returncode:
+   check=subprocess.run(['git','apply','--check',str(recording_patch)],cwd=str(HOST),capture_output=True)
+   if check.returncode:raise RuntimeError('实时MIDI接线需要合并：'+check.stderr.decode('utf8',errors='replace'))
+   subprocess.run(['git','apply',str(recording_patch)],cwd=str(HOST),check=True)
  updated={dst.relative_to(HOST).as_posix():hashlib.sha256(dst.read_bytes()).hexdigest() for src,dst in pending}
  state_path.write_bytes(json.dumps(updated,indent=2,ensure_ascii=False).encode('utf8'))
  print('本次修复模块和插件已更新到软件源码中。')
