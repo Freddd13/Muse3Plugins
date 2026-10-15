@@ -63,9 +63,10 @@ def apply():
  patch('mscore/inspector/inspector.cpp','#include "freeslurinspector.h"','#include "freeslurinspector.h"\n#include "../handbracketsettings.h"')
  patch('mscore/inspector/inspector.cpp','      mapSignals({h,v,width,{Pid::HAND_BRACKET_MODE,0,_mode,nullptr},{Pid::HAND_BRACKET_TEXT,0,text,nullptr}},{});','      addHandBracketDefaultControls(host,grid,inspector);\n      mapSignals({h,v,width,{Pid::HAND_BRACKET_MODE,0,_mode,nullptr},{Pid::HAND_BRACKET_TEXT,0,text,nullptr}},{});')
  patch('libmscore/CMakeLists.txt','slur.cpp freeslur.cpp tie.cpp','slur.cpp freeslur.cpp freesluravoidance.cpp tie.cpp')
- patch('libmscore/CMakeLists.txt','undo.cpp cmd.cpp scorefile.cpp revisions.cpp','undo.cpp cmd.cpp scorefile.cpp regionalvariants.cpp regionalvariants.h revisions.cpp')
+ if 'regionalvariants.cpp regionalvariants.h' not in (HOST/'libmscore/CMakeLists.txt').read_text(encoding='utf8'):
+  patch('libmscore/CMakeLists.txt','undo.cpp cmd.cpp scorefile.cpp revisions.cpp','undo.cpp cmd.cpp scorefile.cpp regionalvariants.cpp regionalvariants.h revisions.cpp')
  p=HOST/'libmscore/CMakeLists.txt';s=p.read_text(encoding='utf8');s=s.replace('set_source_files_properties(regionalvariants.cpp scorefile.cpp PROPERTIES COMPILE_FLAGS "/utf-8")','set_source_files_properties(regionalvariants.cpp scorefile.cpp PROPERTIES COMPILE_FLAGS "/execution-charset:utf-8")');encoding='\nif(MSVC)\n  set_source_files_properties(regionalvariants.cpp scorefile.cpp PROPERTIES COMPILE_FLAGS "/execution-charset:utf-8")\nendif()\n'
- if encoding not in s:s+=encoding
+ if encoding not in s and 'set_source_files_properties(regionalvariants.cpp regionalconnections.cpp scorefile.cpp PROPERTIES COMPILE_FLAGS "/execution-charset:utf-8")' not in s:s+=encoding
  if p.read_bytes()!=s.encode('utf8'):p.write_bytes(s.encode('utf8'))
  patch('libmscore/property.h','      HAND_BRACKET_TEXT,','      HAND_BRACKET_TEXT,\n      FREE_SLUR_AUTO,')
  patch('libmscore/property.cpp','      { Pid::HAND_BRACKET_TEXT, P_TYPE::BOOL, true, "handBracketText", "hand bracket label" },','      { Pid::HAND_BRACKET_TEXT, P_TYPE::BOOL, true, "handBracketText", "hand bracket label" },\n      { Pid::FREE_SLUR_AUTO, P_TYPE::BOOL, true, "freeSlurAuto", "free slur automatic avoidance" },')
@@ -177,13 +178,29 @@ def apply():
    check=subprocess.run(['git','apply','--check',str(music_patch)],cwd=str(HOST),capture_output=True)
    if check.returncode:raise RuntimeError('音乐分析显示接线需要合并：'+check.stderr.decode('utf8',errors='replace'))
    subprocess.run(['git','apply',str(music_patch)],cwd=str(HOST),check=True)
+ recording_markers={
+  'audiodrivers/pm.cpp':['captureMidiInput(captured,timestamp)','stopMidiCaptureInput('],
+  'audiodrivers/mididriver.cpp':['captureMidiInput(captured,midiInputTime())'],
+  'mscore/plugin/api/qmlpluginapi.h':['Q_INVOKABLE QObject* newMidiCaptureSession();'],
+  'mscore/plugin/api/qmlpluginapi.cpp':['new Ms::MidiCaptureSession(this)'],
+  'mscore/plugin/plugin.cmake':['/workflow/midicapture.h','/workflow/midicapture.cpp'],
+  'mscore/seq.cpp':['message.inputTimestamp = midiInputTime();','captureMidiInput(msg.event, msg.inputTimestamp)'],
+  'mscore/seq.h':['qint64 inputTimestamp { 0 };']}
+ recording_complete=all(all(marker in (HOST/path).read_text(encoding='utf8') for marker in markers) for path,markers in recording_markers.items())
  recording_patch=ROOT/'midi-recording-host.patch'
- if recording_patch.exists():
+ if recording_patch.exists() and not recording_complete:
   already=subprocess.run(['git','apply','--reverse','--check',str(recording_patch)],cwd=str(HOST),capture_output=True)
   if already.returncode:
    check=subprocess.run(['git','apply','--check',str(recording_patch)],cwd=str(HOST),capture_output=True)
    if check.returncode:raise RuntimeError('实时MIDI接线需要合并：'+check.stderr.decode('utf8',errors='replace'))
    subprocess.run(['git','apply',str(recording_patch)],cwd=str(HOST),check=True)
+ regional_patch=ROOT/'regional-writing-host.patch'
+ if regional_patch.exists():
+  already=subprocess.run(['git','apply','--reverse','--check',str(regional_patch)],cwd=str(HOST),capture_output=True)
+  if already.returncode:
+   check=subprocess.run(['git','apply','--check',str(regional_patch)],cwd=str(HOST),capture_output=True)
+   if check.returncode:raise RuntimeError('分段方案模块登记需要合并：'+check.stderr.decode('utf8',errors='replace'))
+   subprocess.run(['git','apply',str(regional_patch)],cwd=str(HOST),check=True)
  updated={dst.relative_to(HOST).as_posix():hashlib.sha256(dst.read_bytes()).hexdigest() for src,dst in pending}
  state_path.write_bytes(json.dumps(updated,indent=2,ensure_ascii=False).encode('utf8'))
  print('本次修复模块和插件已更新到软件源码中。')
