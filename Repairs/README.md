@@ -2,6 +2,8 @@
 
 正式软件源码位于 `E:/programming/funcodes/muse3_dev/MuseScore`。本次修复进度见 [实施记录](../Planning/REPAIR_2026_10_IMPLEMENTATION.md)，使用方法见 [功能说明](USER_GUIDE.md)。
 
+0.48开始落实[第二轮调整](../Planning/REPAIR_2026_10_SECOND_PASS.md)，先修复力度显示、滚轮和可见音刷新。
+
 0.43 修复了日常编辑、菜单和速度标记；0.44 整理了和弦窗口、分手折线与演奏表达；0.45 增加 MIDI 录制；0.46 更新和弦与对位判断、连续手位和 MIDI 松手说明。0.47 将分段方案整理成保存 A、增加 B、切换试听的操作，补齐跨段连线，并让编辑器直接显示对应、试听和使用力度。
 
 `native/` 保存对应的独立模块与修改文件。`apply_native.py` 核对目标文件后复制这些模块，并补上必要接线；`midi-recording-host.patch` 保存 0.44 到 0.45 的输入接线，`music-analysis-host.patch` 保存 0.46 的谱面提示和面板大小接线，`regional-writing-host.patch` 登记 0.47 的连线模块。重复同步会核对完整模块，并保留文件末尾换行。目标已有其它改动时先合并，再应用。
