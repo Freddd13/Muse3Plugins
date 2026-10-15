@@ -7,9 +7,14 @@ PLUGINS=ROOT.parent
 HOST=Path(r'E:\programming\funcodes\muse3_dev\MuseScore')
 def patch(path,old,new):
  p=HOST/path;s=p.read_text(encoding='utf8')
+ mirror=ROOT/'native'/path
+ if mirror.is_file() and same_file(mirror,p):return
  if new in s:return
  if s.count(old)!=1:raise RuntimeError('Cannot identify edit in '+path+': '+old[:55])
  p.write_bytes(s.replace(old,new).encode('utf8'))
+def same_file(a,b):
+ return b.exists() and a.read_bytes().rstrip(b"\r\n")==b.read_bytes().rstrip(b"\r\n")
+
 def apply():
  state_path=ROOT/'out/applied-native.json';state_path.parent.mkdir(parents=True,exist_ok=True)
  previous=json.loads(state_path.read_text(encoding='utf8')) if state_path.exists() else {}
@@ -24,7 +29,7 @@ def apply():
  # be merged deliberately rather than overwritten by a local source mirror.
  for src,dst in pending:
   key=dst.relative_to(HOST).as_posix()
-  if not dst.exists() or dst.read_bytes()==src.read_bytes():continue
+  if not dst.exists() or same_file(src,dst):continue
   current=hashlib.sha256(dst.read_bytes()).hexdigest()
   if key in previous:
    if current!=previous[key]:raise RuntimeError('另一个任务修改了 '+key+'；请先合并这份修改。')
@@ -34,7 +39,7 @@ def apply():
  for src in (ROOT/'native').rglob('*'):
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
-   if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
+   if not same_file(src,dst):dst.write_bytes(src.read_bytes())
  p=HOST/'mscore/plugin/api/scoreobserver.h';s=p.read_text(encoding='utf8')
  declarations=['      Q_INVOKABLE QVariantMap stopWorkflowPlayback();','      Q_INVOKABLE QVariantMap referencePlan(const QVariantMap&);','      Q_INVOKABLE QVariantMap startReferencePlayback(const QVariantMap&);','      Q_INVOKABLE QVariantMap stopReferencePlayback();','      Q_INVOKABLE QVariantMap setEditorComparison(const QVariantMap&);','      Q_INVOKABLE QVariantMap setReferenceTracks(const QVariantList&);']
  s='\n'.join(line for line in s.splitlines() if line not in declarations)+'\n'
@@ -142,7 +147,8 @@ def apply():
  patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newReferenceMedia();','      Q_INVOKABLE QObject* newReferenceMedia();\n      Q_INVOKABLE QObject* newReferenceProject();')
  if 'QObject* PluginAPI::newReferenceProject()' not in (HOST/'mscore/plugin/api/qmlpluginapi.cpp').read_text(encoding='utf8'):
   patch('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }\nQObject* PluginAPI::newReferenceProject() { return Ms::referenceProject(); }')
- patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newWorkflowContext();','      Q_INVOKABLE QObject* newWorkflowContext();\n      Q_INVOKABLE void releaseReferenceMedia(QObject*);')
+ if "Q_INVOKABLE void releaseReferenceMedia(QObject*);" not in (HOST/"mscore/plugin/api/qmlpluginapi.h").read_text(encoding="utf8"):
+  patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newWorkflowContext();','      Q_INVOKABLE QObject* newWorkflowContext();\n      Q_INVOKABLE void releaseReferenceMedia(QObject*);')
  patch('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }','QObject* PluginAPI::newReferenceMedia() { auto media=Ms::createReferenceMedia(this);media->setProperty("kumoReferenceOwned",true);return media; }\nvoid PluginAPI::releaseReferenceMedia(QObject* media) { if(media&&media->parent()==this&&media->property("kumoReferenceOwned").toBool())media->deleteLater(); }')
  patch('mscore/seq.cpp','#include "seq.h"','#include "seq.h"\n#include "workflow/referencebus.h"')
  patch('mscore/seq.cpp','      float* p = buffer;','      ReferenceAudioPeriod referencePeriod(buffer,framesPerPeriod,playFrame,state==Transport::PLAY && !inCountIn);\n      float* p = buffer;')
@@ -163,7 +169,14 @@ def apply():
   for src in (PLUGINS/name).glob('*'):
    if src.is_file() and src.suffix in ('.qml','.js','.md'):
     dst=HOST/'share/plugins'/name/src.name;dst.parent.mkdir(parents=True,exist_ok=True)
-    if not dst.exists() or dst.read_bytes()!=src.read_bytes():dst.write_bytes(src.read_bytes())
+    if not same_file(src,dst):dst.write_bytes(src.read_bytes())
+ music_patch=ROOT/'music-analysis-host.patch'
+ if music_patch.exists():
+  already=subprocess.run(['git','apply','--reverse','--check',str(music_patch)],cwd=str(HOST),capture_output=True)
+  if already.returncode:
+   check=subprocess.run(['git','apply','--check',str(music_patch)],cwd=str(HOST),capture_output=True)
+   if check.returncode:raise RuntimeError('音乐分析显示接线需要合并：'+check.stderr.decode('utf8',errors='replace'))
+   subprocess.run(['git','apply',str(music_patch)],cwd=str(HOST),check=True)
  recording_patch=ROOT/'midi-recording-host.patch'
  if recording_patch.exists():
   already=subprocess.run(['git','apply','--reverse','--check',str(recording_patch)],cwd=str(HOST),capture_output=True)

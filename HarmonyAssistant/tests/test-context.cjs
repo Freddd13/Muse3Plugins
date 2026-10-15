@@ -30,4 +30,9 @@ assert.equal(t.atTick(passing,120,0).root,0);assert.equal(t.atTick(passing,120,0
 config.pedalMode=0;const single=t.build([frame(0,chord,pedal),frame(480,chord.concat(fresh,melody),pedal),frame(1920,[])],config,0,[]);assert.equal(single.length,1,'single-chord pedal mode remains one region');
 const bundle=t.workerBundle({harmony:fs.readFileSync(path.join(__dirname,'..','Harmony.js'),'utf8'),timeline:fs.readFileSync(path.join(__dirname,'..','Timeline.js'),'utf8')});
 const worker=vm.runInNewContext(bundle,{input:{frames:[frame(0,notes([40,48,55])),frame(1920,[])],config,part:0}});assert.equal(worker.regions[0].chord,'C/E');assert.equal(worker.regions[0].inversion,'第一转位');
+const phrase=[frame(0,notes([45,48,52,55],0,480)),frame(480,notes([48,52,55,57],480,960)),frame(960,notes([45,48,52,55],960,1440))];
+config.pedalMode=1;const isolated=t.build([phrase[1]],config,0,[])[0],connected=t.build(phrase,config,0,[]);
+assert.equal(isolated.chord,'C6');assert.equal(t.atTick(connected,480,0).chord,'Am7/C');assert(t.atTick(connected,480,0).alternatives.some(a=>a.root===0&&a.definition===11));
+const incremental=t.createBuilder(phrase,config,0);let steps=0;while(!t.step(incremental,1)){assert(++steps<100)}assert.equal(JSON.stringify(incremental.regions),JSON.stringify(connected));
+const afterNoChord=t.build([noChord,frame(480,notes([60,64,67],480,960)),frame(1920,[])],config,0,[]);assert.equal(t.atTick(afterNoChord,0,0).chord,'N.C.');assert.equal(t.atTick(afterNoChord,480,0).root,0);
 console.log('Chord context, spelling, inversions and both minor degree modes passed');
