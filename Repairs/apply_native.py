@@ -165,7 +165,8 @@ def apply():
  s=p.read_text(encoding='utf8');period='      ReferenceAudioPeriod referencePeriod(buffer,framesPerPeriod,playFrame,state==Transport::PLAY && !inCountIn);\n'
  s=s.replace(period,'');anchor='      processMessages();\n'
  if s.count(anchor)!=1:raise RuntimeError('Seq period preparation changed')
- p.write_bytes(s.replace(anchor,anchor+period).encode('utf8'))
+ updated=s.replace(anchor,anchor+period).encode('utf8')
+ if p.read_bytes()!=updated:p.write_bytes(updated)
  for name in plugin_names:
   for src in (PLUGINS/name).glob('*'):
    if src.is_file() and src.suffix in ('.qml','.js','.md'):
@@ -195,7 +196,11 @@ def apply():
    if check.returncode:raise RuntimeError('实时MIDI接线需要合并：'+check.stderr.decode('utf8',errors='replace'))
    subprocess.run(['git','apply',str(recording_patch)],cwd=str(HOST),check=True)
  regional_patch=ROOT/'regional-writing-host.patch'
- if regional_patch.exists():
+ regional_markers={
+  'libmscore/CMakeLists.txt':['regionalconnections.cpp regionalconnections.h','set_source_files_properties(regionalvariants.cpp regionalconnections.cpp scorefile.cpp'],
+  'mscore/plugin/plugin.cmake':['/workflow/regionalcontrols.cpp','/workflow/regionalcontrols.h']}
+ regional_complete=all(all(marker in (HOST/path).read_text(encoding='utf8') for marker in markers) for path,markers in regional_markers.items())
+ if regional_patch.exists() and not regional_complete:
   already=subprocess.run(['git','apply','--reverse','--check',str(regional_patch)],cwd=str(HOST),capture_output=True)
   if already.returncode:
    check=subprocess.run(['git','apply','--check',str(regional_patch)],cwd=str(HOST),capture_output=True)
