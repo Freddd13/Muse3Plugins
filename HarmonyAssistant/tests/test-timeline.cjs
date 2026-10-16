@@ -37,6 +37,10 @@ const other=regions.map(r=>({...r,part:8}));overridden=t.overlay(regions.concat(
 assert.equal(t.atTick(overridden,300,8).source,'auto','other part unaffected');
 const doc=a.document([{tick:0,bar:1,beat:1,root:0,definition:0,notes:c,chord:'C',degree:'I'}],'a'.repeat(64),config,regions,edits);
 assert.equal(a.validate(JSON.parse(JSON.stringify(doc))).overrides.length,1);doc.schema=1;assert.equal(a.validate(doc).overrides.length,0);
+const adjacent=[{...manual,start:0,end:480,root:0,definition:0,suppressed:false},{...manual,start:480,end:960,root:7,definition:2,suppressed:false}];
+const shortened={...adjacent[0],end:180};const neighbours=t.resizeNeighbours(adjacent,adjacent[0],0,180);
+const resized=t.overlay(adjacent,neighbours.concat([shortened]));assert.equal(t.atTick(resized,200,0).root,7);assert.equal(t.atTick(resized,200,0).start,180);
+const alone=t.overlay(adjacent.slice(0,1),t.resizeNeighbours(adjacent.slice(0,1),adjacent[0],0,180).concat([shortened]));assert.equal(t.atTick(alone,200,0),null);
 const long=[];for(let i=0;i<10000;i++)long.push(frame(i*480,notes(i%2?[43,59,62]:[36,52,55],i*480,(i+1)*480),false));
 long.forEach(f=>f.scoreEnd=4800000);
 const begin=performance.now();const result=t.build(long,config,0,[]);assert.equal(result.length,10000);

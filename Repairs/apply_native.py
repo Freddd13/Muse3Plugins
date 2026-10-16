@@ -40,13 +40,14 @@ def apply():
   if src.is_file():
    dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
    if not same_file(src,dst):dst.write_bytes(src.read_bytes())
- p=HOST/'mscore/plugin/api/scoreobserver.h';s=p.read_text(encoding='utf8')
- declarations=['      Q_INVOKABLE QVariantMap stopWorkflowPlayback();','      Q_INVOKABLE QVariantMap referencePlan(const QVariantMap&);','      Q_INVOKABLE QVariantMap startReferencePlayback(const QVariantMap&);','      Q_INVOKABLE QVariantMap stopReferencePlayback();','      Q_INVOKABLE QVariantMap setEditorComparison(const QVariantMap&);','      Q_INVOKABLE QVariantMap setReferenceTracks(const QVariantList&);']
- s='\n'.join(line for line in s.splitlines() if line not in declarations)+'\n'
- anchor='      Q_INVOKABLE QVariantMap workflowStatus();'
- if s.count(anchor)!=1:raise RuntimeError('Workflow declarations changed')
- s=s.replace(anchor,anchor+'\n'+'\n'.join(declarations))
- if p.read_bytes()!=s.encode('utf8'):p.write_bytes(s.encode('utf8'))
+ if not (ROOT/'native/mscore/plugin/api/scoreobserver.h').is_file():
+  p=HOST/'mscore/plugin/api/scoreobserver.h';s=p.read_text(encoding='utf8')
+  declarations=['      Q_INVOKABLE QVariantMap stopWorkflowPlayback();','      Q_INVOKABLE QVariantMap referencePlan(const QVariantMap&);','      Q_INVOKABLE QVariantMap startReferencePlayback(const QVariantMap&);','      Q_INVOKABLE QVariantMap stopReferencePlayback();','      Q_INVOKABLE QVariantMap setEditorComparison(const QVariantMap&);','      Q_INVOKABLE QVariantMap setReferenceTracks(const QVariantList&);']
+  s='\n'.join(line for line in s.splitlines() if line not in declarations)+'\n'
+  anchor='      Q_INVOKABLE QVariantMap workflowStatus();'
+  if s.count(anchor)!=1:raise RuntimeError('Workflow declarations changed')
+  s=s.replace(anchor,anchor+'\n'+'\n'.join(declarations))
+  if p.read_bytes()!=s.encode('utf8'):p.write_bytes(s.encode('utf8'))
  patch('mscore/plugin/plugin.cmake','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.h\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.cpp')
  if 'handbracket.cpp handbracket.h tempotext.cpp' in (HOST/'libmscore/CMakeLists.txt').read_text(encoding='utf8'):
   patch('libmscore/CMakeLists.txt','handbracket.cpp handbracket.h tempotext.cpp','handbracket.cpp handbracket.h handbracketanalysis.cpp tempotext.cpp')
@@ -96,6 +97,7 @@ def apply():
  patch('libmscore/layout.cpp','            }\n      }\n\nstatic bool measureMayHaveBeamsJoinedIntoNext','            }\n      InputNotation::coordinateTieStems(measure);\n      }\n\nstatic bool measureMayHaveBeamsJoinedIntoNext')
  patch('mscore/CMakeLists.txt','      midicrop/midicroppanel.h midicrop/midicroppanel.cpp','      midicrop/midicroppanel.h midicrop/midicroppanel.cpp\n      inputnotationmenu.h inputnotationmenu.cpp')
  patch('mscore/preferences.cpp','{PREF_SCORE_NOTE_INPUT_AUTO_RHYTHM,                    new BoolPreference(true, false)},','{PREF_SCORE_NOTE_INPUT_AUTO_RHYTHM,                    new BoolPreference(true, false)},\n            {PREF_SCORE_TIED_BEAMS, new BoolPreference(false, false)},\n            {PREF_SCORE_COHERENT_TIE_STEMS, new BoolPreference(true, false)},')
+ patch('mscore/scoreview.h','      bool activateNotePreview(const QPointF& canvasPosition);','      QRectF notePreviewMarkerBox(QObject* target,int tick,int track) const { return _notePreviewLayers.markerBox(target,tick,track); }\n      bool activateNotePreview(const QPointF& canvasPosition);')
  patch('mscore/musescore.cpp','#include "inputrhythmpreference.h"','#include "inputrhythmpreference.h"\n#include "inputnotationmenu.h"\n#include "libmscore/inputnotation.h"')
  patch('mscore/musescore.cpp','      InputRhythm::setEnabled(preferences.getBool(PREF_SCORE_NOTE_INPUT_AUTO_RHYTHM));','      InputRhythm::setEnabled(preferences.getBool(PREF_SCORE_NOTE_INPUT_AUTO_RHYTHM));\n      InputNotation::setTiedBeams(preferences.getBool(PREF_SCORE_TIED_BEAMS));\n      InputNotation::setCoherentStems(preferences.getBool(PREF_SCORE_COHERENT_TIE_STEMS));')
  patch('mscore/musescore.cpp','      menuTools->addAction(getAction("resequence-rehearsal-marks"));','      addInputNotationMenu(menuTools);\n      menuTools->addAction(getAction("resequence-rehearsal-marks"));')
@@ -151,6 +153,8 @@ def apply():
  if "Q_INVOKABLE void releaseReferenceMedia(QObject*);" not in (HOST/"mscore/plugin/api/qmlpluginapi.h").read_text(encoding="utf8"):
   patch('mscore/plugin/api/qmlpluginapi.h','      Q_INVOKABLE QObject* newWorkflowContext();','      Q_INVOKABLE QObject* newWorkflowContext();\n      Q_INVOKABLE void releaseReferenceMedia(QObject*);')
  patch('mscore/plugin/api/qmlpluginapi.cpp','QObject* PluginAPI::newReferenceMedia() { return Ms::createReferenceMedia(this); }','QObject* PluginAPI::newReferenceMedia() { auto media=Ms::createReferenceMedia(this);media->setProperty("kumoReferenceOwned",true);return media; }\nvoid PluginAPI::releaseReferenceMedia(QObject* media) { if(media&&media->parent()==this&&media->property("kumoReferenceOwned").toBool())media->deleteLater(); }')
+ patch('mscore/musescore.cpp','#include "musescore.h"','#include "musescore.h"\n#include "workflow/workflowcontext.h"')
+ patch('mscore/musescore.cpp','      if (_performanceEditor) _performanceEditor->setView(cv);','      if (_performanceEditor) _performanceEditor->setView(cv);\n      notifyWorkflowCurrentScore(cs);')
  patch('mscore/seq.cpp','#include "seq.h"','#include "seq.h"\n#include "workflow/referencebus.h"')
  patch('mscore/seq.cpp','      float* p = buffer;','      ReferenceAudioPeriod referencePeriod(buffer,framesPerPeriod,playFrame,state==Transport::PLAY && !inCountIn);\n      float* p = buffer;')
  patch('mscore/seq.cpp','qreal playPosSeconds = PlaybackTiming::time(cs, playPosUTick);','qreal playPosSeconds = referenceOutputTime(PlaybackTiming::time(cs, playPosUTick));')
@@ -158,6 +162,7 @@ def apply():
  patch('mscore/seq.cpp','playFrame = PlaybackTiming::time(cs, from) * MScore::sampleRate;','playFrame = referenceOutputTime(PlaybackTiming::time(cs, from)) * MScore::sampleRate;')
  patch('mscore/seq.cpp','            int scoreEndUTick = cs->repeatList().tick2utick(cs->lastMeasure()->endTick().ticks());','            const int referenceStopTick=inCountIn?-1:referenceEndTick();\n            const int referenceStopFrame=referenceStopTick<0?-1:int(referenceOutputTime(PlaybackTiming::time(cs,referenceStopTick))*MScore::sampleRate);\n            if(referenceStopFrame>=0)periodEndFrame=qMin(periodEndFrame,referenceStopFrame);\n            int scoreEndUTick = cs->repeatList().tick2utick(cs->lastMeasure()->endTick().ticks());')
  patch('mscore/seq.cpp','                        metronome(framesRemain, p, inCountIn);\n                        _synti->process(framesRemain, p);','                        const unsigned before=referenceStopFrame<0?framesRemain:unsigned(qBound(0,referenceStopFrame-*pPlayFrame,int(framesRemain)));\n                        if(before){metronome(before,p,inCountIn);_synti->process(before,p);}\n                        if(referenceStopFrame>=0&&*pPlayFrame+int(before)>=referenceStopFrame){stopNotes(-1,true);stopTransport();}\n                        if(before<framesRemain)_synti->process(framesRemain-before,p+before*2);')
+ patch('mscore/seq.cpp','if(referenceStopFrame>=0&&*pPlayFrame+int(before)>=referenceStopFrame){stopNotes(-1,true);stopTransport();}','if(referenceStopFrame>=0&&*pPlayFrame+int(before)>=referenceStopFrame){markReferenceEndReached(referenceStopTick);stopNotes(-1,true);stopTransport();}')
  p=HOST/'mscore/seq.cpp';s=p.read_text(encoding='utf8');old='cs->utime2utick(qreal(playFrame) / qreal(MScore::sampleRate))';new='cs->utime2utick(referenceScoreTime(qreal(playFrame) / qreal(MScore::sampleRate)))'
  if old in s:
   if s.count(old)!=3:raise RuntimeError('Seq playback position sites changed')
@@ -173,7 +178,11 @@ def apply():
     dst=HOST/'share/plugins'/name/src.name;dst.parent.mkdir(parents=True,exist_ok=True)
     if not same_file(src,dst):dst.write_bytes(src.read_bytes())
  music_patch=ROOT/'music-analysis-host.patch'
- if music_patch.exists():
+ music_markers={
+  'mscore/plugin/mscorePlugins.cpp':['const bool workflowPanel=!p->property("preferredPanelGroup").toString().isEmpty();','orientation=workflowPanel ?','const int size=workflowPanel && requestedSize<80','if(!p->property("preferredPanelGroup").toString().isEmpty())dock->raise();'],
+  'mscore/scoreview.h':['QVector<QRectF> notePreviewMarkerBoxes(QObject* exceptOwner = nullptr) const { return _notePreviewLayers.markerBoxes(exceptOwner); }']}
+ music_complete=all(all(marker in (HOST/path).read_text(encoding='utf8') for marker in markers) for path,markers in music_markers.items())
+ if music_patch.exists() and not music_complete:
   already=subprocess.run(['git','apply','--reverse','--check',str(music_patch)],cwd=str(HOST),capture_output=True)
   if already.returncode:
    check=subprocess.run(['git','apply','--check',str(music_patch)],cwd=str(HOST),capture_output=True)

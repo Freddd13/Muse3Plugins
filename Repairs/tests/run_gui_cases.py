@@ -28,6 +28,8 @@ for source in installed.iterdir():
             destination.mkdir(parents=True, exist_ok=True)
             for name in files:
                 stage_file(Path(parent) / name, destination / name)
+if os.environ.get('PERFORMANCE_REFERENCE_MODULE'):
+    stage_file(Path(os.environ['PERFORMANCE_REFERENCE_MODULE']).resolve(), runtime / 'bin/kumo_referenceaudio.dll')
 target = runtime / 'bin' / test.name
 stage_file(test, target)
 # Qt's style loader also consults QLibraryInfo, independently of MsQmlEngine.
@@ -51,4 +53,5 @@ if log.exists():
     print(log.read_text(encoding='utf-8', errors='replace').encode('ascii', errors='backslashreplace').decode('ascii'))
 else:
     print('The test process exited before Qt could start, exit code:', status)
+print("GUI test exit code:",status)
 sys.exit(status)

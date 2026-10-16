@@ -45,6 +45,12 @@ private slots:
       void preRollDoesNotStartAudioEarly(){ReferenceMediaProject project(nullptr,{1,rate,attach,detach});QVERIFY(project.start(plan(1,1,256))["ok"].toBool());QTRY_VERIFY(project.property("prepared").toBool());float block[256]={};output(context,block,128,0,true);QCOMPARE(project.position(),0.);output(context,block,128,128,true);QCOMPARE(project.position(),0.);output(context,block,128,256,true);QVERIFY(project.position()>0);project.stop();}
       void seekStopsOldOutput(){ReferenceMediaProject project(nullptr,{1,rate,attach,detach});QVERIFY(project.start(plan())["ok"].toBool());QTRY_VERIFY(project.property("prepared").toBool());float block[256]={};output(context,block,128,0,true);output(context,block,128,22050,true);QTRY_VERIFY(!project.playing());QVERIFY(project.status().contains(QString::fromUtf8("位置改变")));}
       void invalidPlansKeepStopped(){ReferenceMediaProject project(nullptr,{1,rate,attach,detach});auto p=plan();auto clips=p["clips"].toList();auto clip=clips[0].toMap();clip["path"]=folder.filePath("missing.wav");clips[0]=clip;p["clips"]=clips;QVERIFY(project.start(p).contains("error"));QVERIFY(!project.playing());p=plan();clips=p["clips"].toList();clip=clips[0].toMap();auto pieces=clip["pieces"].toList();pieces.append(pieces.front());clip["pieces"]=pieces;clips[0]=clip;p["clips"]=clips;QVERIFY(project.start(p).contains("error"));}
+      void liveMasterGainDoesNotWaitForThePreparedBuffer(){
+            ReferenceMediaProject project(nullptr,{1,rate,attach,detach});QVERIFY(project.start(plan(1))["ok"].toBool());QTRY_VERIFY_WITH_TIMEOUT(project.property("prepared").toBool(),10000);
+            std::array<float,256> block{};QVERIFY(output);output(context,block.data(),128,0,true);
+            project.setVolume(0.);std::fill(block.begin(),block.end(),0.f);output(context,block.data(),128,128,true);for(auto sample:block)QCOMPARE(sample,0.f);
+            project.setVolume(1.);std::fill(block.begin(),block.end(),0.f);output(context,block.data(),128,256,true);QVERIFY(std::any_of(block.begin(),block.end(),[](float sample){return std::abs(sample)>.001f;}));project.stop();
+            }
       void continuousSpeedPreservesPitch(){
             std::atomic_bool cancel{false};QVector<float> pcm;QString error;
             std::vector<KumoAudio::Segment> segments{{500,1000,.75,false},{1000,1500,1.,false},{1500,2500,1.25,false}};
