@@ -36,17 +36,23 @@ def xml(path):
   return ET.fromstring(archive.read(name))
 before,after=xml(source),xml(target)
 def notes(root):
- return [(n.findtext('pitch'),n.findtext('tpc'),n.findtext('veloType'),n.findtext('velocity')) for n in root.findall('.//Staff/Measure/voice/Chord/Note')]
+ return [(n.findtext('pitch'),n.findtext('tpc'),n.findtext('veloType'),n.findtext('velocity'),n.findtext('tuning')) for n in root.findall('.//Staff/Measure/voice/Chord/Note')]
 def durations(root):
  return [(element.tag,element.findtext('durationType'),len(element.findall('dots'))) for element in root.findall('.//Staff/Measure/voice/*') if element.tag in ('Chord','Rest')]
 def marker(root):
  return root.find('Score/metaTag[@name="'+args.metadata+'"]').text
+def engraving(root):
+ return [(e.findtext('staffMove','0'),[n.findtext('Fingering/text') for n in e.findall('Note')],
+          [ET.tostring(line,encoding='unicode') for line in e.findall('Spanner')])
+         for e in root.findall('.//Staff/Measure/voice/Chord')]
 assert notes(before)==notes(after),(notes(before),notes(after))
+assert engraving(before)==engraving(after),(engraving(before),engraving(after))
 assert durations(before)==durations(after)
 assert json.loads(marker(before))==json.loads(marker(after))
 report={'program':'MuseScore 3.6.2.548021803 (official x64)', 'exit':result.returncode,
         'source':str(source),'saved':str(target),'notes':len(notes(after)),
-        'sameNotes':True,'sameDurations':True,'sameTranscriptionData':args.metadata=='kumo.transcription','sameMetadata':args.metadata,
+        'sameNotes':True,'sameDurations':True,'sameFingeringStaffMoveAndSlur':True,'sameTranscriptionData':args.metadata=='kumo.transcription','sameMetadata':args.metadata,
+        'originalVelocityBackupTagsBefore':len(before.findall('.//kumoOriginalVelocity')),'originalVelocityBackupTagsAfter':len(after.findall('.//kumoOriginalVelocity')),
         'binarySha256':hashlib.sha256(program.read_bytes()).hexdigest(),
         'installerSha256':'fa3ca0f8cc5b0e8b0c0bb8ef11e227b9b27b2a5c9da28dab58bafcbb0eb657d0'}
 (work/('report'+suffix+'.json')).write_bytes((json.dumps(report,ensure_ascii=False,indent=2)+'\n').encode('utf8'))

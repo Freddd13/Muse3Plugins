@@ -9,3 +9,5 @@
 0.60：[编配建议操作](docs/CONTEXT_060_GUIDE.md)、[实际检查](docs/CONTEXT_060_DELIVERY.md)。`context`保存MCP桥与共同Python服务，`apply_context.py`核对原文件后同步。
 
 0.61：[指法与编配建议](docs/SUGGESTIONS_061_GUIDE.md)、[计算方法](docs/SUGGESTIONS_METHOD.md)。
+
+0.62：[给定音高写节奏](docs/RHYTHM_062_GUIDE.md)、[检查结果](docs/RHYTHM_062_DELIVERY.md)。所有P2功能的操作入口、保存方式和检查结果见[交付总览](docs/P2_DELIVERY.md)。

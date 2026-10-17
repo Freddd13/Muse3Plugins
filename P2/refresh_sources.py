@@ -6,6 +6,9 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="给定音高写节奏",path="mscore/performanceeditor/rhythmpane.cpp",symbol="RhythmPane::RhythmPane(",line="1",role="录制、导入、拖动草稿、试听和采用",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="节奏音序与时值",path="share/plugins/PerformanceExpression/Rhythm.js",symbol="function build(",line="1",role="给定音高、漏敲多敲、休止与连音组",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp;../../muse3_plugins/PerformanceExpression/tests/test-rhythm.cjs"),
+ dict(topic="MIDI录音目录",path="mscore/workflow/midicapture.cpp",symbol='const QString folder=QSettings().value("workflow/recordingDirectory"',line="1",role="沿用录制，默认写入E盘",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="传统编配建议任务",path="mscore/workflow/localsuggestions.cpp",symbol="void LocalSuggestionTask::start(",line="1",role="分批读取、可取消音乐规则和原生候选",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="指法与配音规则",path="share/plugins/ArrangementAssistant/Suggestions.js",symbol="function generate(",line="1",role="连续按键、指法、换手和对位候选",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic='AI任务范围',path='mscore/workflow/arrangementreader.cpp',symbol='QVariantMap ScoreObserver::arrangementState(',line='1',role='内存谱、版本、准确选区和共同资料',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
@@ -29,7 +32,7 @@ for row in rows:
   if lines:row['line']=str(min(lines,key=lambda n:abs(n-int(row['line']))))
  result.append(row)
 out=io.StringIO();writer=csv.DictWriter(out,fieldnames=['topic','path','symbol','line','role','tests'],delimiter='\t',lineterminator='\n');writer.writeheader();writer.writerows(result);index.write_bytes(out.getvalue().encode('utf8'))
-for name in ('transcription-separate-059.png','transcription-overlay-059.png','arrangement-options-060.png','traditional-suggestions-061.png'):
+for name in ('transcription-separate-059.png','transcription-overlay-059.png','arrangement-options-060.png','traditional-suggestions-061.png','rhythm-writing-062.png'):
  source=R.parent/'P1/out/final-regression'/name
  if source.exists():
   for folder in (R/'docs/images',R/'native/personal/docs/images'):

@@ -1,0 +1,21 @@
+{
+  "firstGuiBatchMs": 2.1566,
+  "maximumGuiBatchMs": 2.1566,
+  "notes": 4000,
+  "pages": 63,
+  "preparation": {
+    "cloneMs": 145.7819,
+    "layoutMs": 43.1699,
+    "validationMs": 0.9838
+  },
+  "readMs": 86.3279,
+  "platform": "Windows x64, Qt 5.15.2",
+  "profile": "4000 quarter notes, one staff, 1000 bars",
+  "media": {
+    "tracks": 8,
+    "prepareMs": 72,
+    "boundedBytes": 9437184,
+    "maximumCallbackMicroseconds": 2,
+    "underruns": 0
+  }
+}
