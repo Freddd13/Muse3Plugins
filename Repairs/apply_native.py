@@ -219,6 +219,7 @@ def apply():
    if check.returncode:raise RuntimeError('分段方案模块登记需要合并：'+check.stderr.decode('utf8',errors='replace'))
    subprocess.run(['git','apply',str(regional_patch)],cwd=str(HOST),check=True)
  updated={dst.relative_to(HOST).as_posix():hashlib.sha256(dst.read_bytes()).hexdigest() for src,dst in pending}
- state_path.write_bytes(json.dumps(updated,indent=2,ensure_ascii=False).encode('utf8'))
+ previous.update(updated)
+ state_path.write_bytes(json.dumps(previous,indent=2,ensure_ascii=False).encode('utf8'))
  print('本次修复模块和插件已更新到软件源码中。')
 if __name__=='__main__':apply()
