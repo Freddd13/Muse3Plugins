@@ -48,6 +48,7 @@ def apply():
   if s.count(anchor)!=1:raise RuntimeError('Workflow declarations changed')
   s=s.replace(anchor,anchor+'\n'+'\n'.join(declarations))
   if p.read_bytes()!=s.encode('utf8'):p.write_bytes(s.encode('utf8'))
+ patch('mscore/CMakeLists.txt','temposymbols.cpp handbracketsettings.h handbracketsettings.cpp','temposymbols.cpp handbracketsettings.h handbracketsettings.cpp\n      midicrop/gateaudition.h midicrop/gateaudition.cpp')
  patch('mscore/plugin/plugin.cmake','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp','    ${CMAKE_CURRENT_LIST_DIR}/api/readonlyanalysisjob.cpp\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.h\n    ${CMAKE_CURRENT_LIST_DIR}/api/pianohandanalysis.cpp')
  if 'handbracket.cpp handbracket.h tempotext.cpp' in (HOST/'libmscore/CMakeLists.txt').read_text(encoding='utf8'):
   patch('libmscore/CMakeLists.txt','handbracket.cpp handbracket.h tempotext.cpp','handbracket.cpp handbracket.h handbracketanalysis.cpp tempotext.cpp')

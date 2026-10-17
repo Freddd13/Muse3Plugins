@@ -2,6 +2,8 @@
 
 正式软件源码位于 `E:/programming/funcodes/muse3_dev/MuseScore`。本次修复进度见 [实施记录](../Planning/REPAIR_2026_10_IMPLEMENTATION.md)，使用方法见 [功能说明](USER_GUIDE.md)。
 
+0.52已完成这轮调整，含写法差异、组合切换及MIDI音长编辑。先看[本轮0–12项答复](docs/REPAIR_048_052_DELIVERY.md)，再按[完整说明](USER_GUIDE_CURRENT.md)操作。检查与截图见[0.52记录](docs/COMPARISON_052_VALIDATION.md)。
+
 0.48开始落实[第二轮调整](../Planning/REPAIR_2026_10_SECOND_PASS.md)，先修复力度显示、滚轮和可见音刷新。
 
 0.49完成演奏表达的原参数区对比、原位切换试听、分范围使用与随谱保存的力度恢复。[操作检查](docs/EXPRESSION_049_VALIDATION.md)记录实际窗口、保存重开与撤销结果。联合播放与循环随后同原曲参考一起检查。
