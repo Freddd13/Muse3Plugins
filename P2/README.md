@@ -7,3 +7,5 @@
 已交付：[0.58 内置工具](docs/BUILTIN_058_DELIVERY.md)、[0.59 频谱扒谱](docs/SPECTRUM_059_DELIVERY.md)。
 
 0.60：[编配建议操作](docs/CONTEXT_060_GUIDE.md)、[实际检查](docs/CONTEXT_060_DELIVERY.md)。`context`保存MCP桥与共同Python服务，`apply_context.py`核对原文件后同步。
+
+0.61：[指法与编配建议](docs/SUGGESTIONS_061_GUIDE.md)、[计算方法](docs/SUGGESTIONS_METHOD.md)。

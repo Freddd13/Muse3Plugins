@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parent
 HOST = ROOT.parent.parent / 'muse3_dev/MuseScore'
 
 def same(a, b):
-    return a.read_bytes().rstrip(b'\r\n') == b.read_bytes().rstrip(b'\r\n')
+    return a.read_bytes() == b.read_bytes()
 
 def main():
     state_file = ROOT / 'out/applied.json'

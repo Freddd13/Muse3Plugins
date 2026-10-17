@@ -6,6 +6,8 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="传统编配建议任务",path="mscore/workflow/localsuggestions.cpp",symbol="void LocalSuggestionTask::start(",line="1",role="分批读取、可取消音乐规则和原生候选",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="指法与配音规则",path="share/plugins/ArrangementAssistant/Suggestions.js",symbol="function generate(",line="1",role="连续按键、指法、换手和对位候选",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic='AI任务范围',path='mscore/workflow/arrangementreader.cpp',symbol='QVariantMap ScoreObserver::arrangementState(',line='1',role='内存谱、版本、准确选区和共同资料',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
  dict(topic='AI分批读取',path='mscore/workflow/arrangementreader.cpp',symbol='QVariantMap ScoreObserver::arrangementRange(',line='1',role='声部、精确时值、连线和演奏数据',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
  dict(topic='MCP关闭处理',path='mscore/workflow/arrangementreader.cpp',symbol='void ScoreObserver::prepareLocalBridge(',line='1',role='应用关闭时释放网络默认配置',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
@@ -27,7 +29,7 @@ for row in rows:
   if lines:row['line']=str(min(lines,key=lambda n:abs(n-int(row['line']))))
  result.append(row)
 out=io.StringIO();writer=csv.DictWriter(out,fieldnames=['topic','path','symbol','line','role','tests'],delimiter='\t',lineterminator='\n');writer.writeheader();writer.writerows(result);index.write_bytes(out.getvalue().encode('utf8'))
-for name in ('transcription-separate-059.png','transcription-overlay-059.png','arrangement-options-060.png'):
+for name in ('transcription-separate-059.png','transcription-overlay-059.png','arrangement-options-060.png','traditional-suggestions-061.png'):
  source=R.parent/'P1/out/final-regression'/name
  if source.exists():
   for folder in (R/'docs/images',R/'native/personal/docs/images'):
