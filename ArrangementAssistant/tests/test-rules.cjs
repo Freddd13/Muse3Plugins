@@ -51,4 +51,19 @@ test('a shared clash can be reviewed across complete alternatives',()=>{const is
 test('a tone supported by another interpretation has no common clash',()=>{const issues=harmonicFrame([note(60),note(64),note(67),note(73)],[{root:1,definition:0}]);assert(!codes(issues).includes('auto-chord-color'));});
 test('short automatic dissonance is left to its musical context',()=>{assert(!codes(harmonicFrame([note(60),note(64),note(67),note(73,0,120)])).includes('auto-chord-color'));});
 test('automatic harmony needs an audible chord tone for the finding',()=>{assert(!codes(harmonicFrame([note(73)])).includes('auto-chord-color'));});
+test('low interval chart uses the actual distance and lower-note boundary',()=>{
+ for(const [distance,limit] of Object.entries(r.lowIntervalLimits)){
+  assert(!codes(check([note(limit),note(limit+Number(distance))])).includes('low-cluster'),`at ${distance}`);
+  assert(codes(check([note(limit-1),note(limit-1+Number(distance))])).includes('low-cluster'),`below ${distance}`);
+ }
+});
+test('low octave and unison have no low interval limit',()=>{assert(!codes(check([note(24),note(36)])).includes('low-cluster'));assert(!codes(check([note(24,0,960,0),note(24,0,960,4)])).includes('low-cluster'));});
+test('compound intervals keep their own chart boundary',()=>{assert(!codes(check([note(40),note(54)])).includes('low-cluster'));assert(codes(check([note(38),note(52)])).includes('low-cluster'));});
+test('each piano has its own low voicing',()=>{assert(!codes(check([{...note(28),partId:0},{...note(29),partId:8}])).includes('low-cluster'));});
+test('personal low interval references can be changed',()=>{let c=r.defaults();c.lowIntervalLimits['2']=40;assert(!codes(check([note(42),note(44)],c)).includes('low-cluster'));});
+test('certain attacks are checked while another hand remains uncertain',()=>{
+ const native=read('../Rules.js',{Harmony:h,Timeline:t,PianoHands:{analyse:()=>({sides:[],possible:false,uncertain:true})}});
+ let c=native.defaults();c.roles={'0':{hand:'right'}};let s=native.run(data([note(60),note(84),note(40,0,960,4)]),c);
+ assert(s.issues.some(i=>i.code==='span-right'));
+});
 console.log(`${passed} rule tests passed`);
