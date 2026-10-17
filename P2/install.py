@@ -9,6 +9,12 @@ assert source.is_file() and target.is_file()
 backup=R/'out/before-p2/MuseScore3Evo.exe'
 if not backup.exists():
  backup.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(target,backup)
+media=H/'msvc.build_harmony_release_x64/mscore/referenceaudio/Release/kumo_referenceaudio.dll'
+if media.is_file() and (H/'mscore/referenceaudio/spectrum.cpp').exists():
+ previous=R/'out/before-spectrum';previous.mkdir(parents=True,exist_ok=True)
+ for current in (target,I/'bin/kumo_referenceaudio.dll'):
+  if current.exists() and not (previous/current.name).exists():shutil.copy2(current,previous/current.name)
+ shutil.copy2(media,I/'bin/kumo_referenceaudio.dll')
 shutil.copy2(source,target)
 for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon'):
  destination=I/'plugins'/folder;destination.mkdir(parents=True,exist_ok=True)

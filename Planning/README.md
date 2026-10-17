@@ -1,6 +1,6 @@
 # 钢琴编曲工具与后续构想
 
-更新：2026-10-17。当前已发布个人版本为 **0.58.0 · Kumo branch / Freddd13**。P2 第一批内置工具已完成，频谱扒谱正在实现。
+更新：2026-10-17。当前已发布个人版本为 **0.59.0 · Kumo branch / Freddd13**。P2 内置工具与手动频谱扒谱已完成，AI 编配数据正在开发。
 
 日常使用从[用户说明](../../muse3_dev/MuseScore/personal/USER_GUIDE.md)开始。本轮九项调整的操作、截图和检查结果见[逐项说明](../Repairs/docs/REPAIR_053_057_DELIVERY.md)。
 
