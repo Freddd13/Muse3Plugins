@@ -15,8 +15,13 @@ if media.is_file() and (H/'mscore/referenceaudio/spectrum.cpp').exists():
  for current in (target,I/'bin/kumo_referenceaudio.dll'):
   if current.exists() and not (previous/current.name).exists():shutil.copy2(current,previous/current.name)
  shutil.copy2(media,I/'bin/kumo_referenceaudio.dll')
+# Dynamic QML imports need their matching runtime dependency.
+qt=H/'dependencies/qt5.15.2/msvc2019_64/bin'
+if (qt/'Qt5WebSockets.dll').exists():
+ assert hashlib.sha256((qt/'Qt5Core.dll').read_bytes()).digest()==hashlib.sha256((I/'bin/Qt5Core.dll').read_bytes()).digest()
+ shutil.copy2(qt/'Qt5WebSockets.dll',I/'bin/Qt5WebSockets.dll')
 shutil.copy2(source,target)
-for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon'):
+for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon','ArrangementAssistant'):
  destination=I/'plugins'/folder;destination.mkdir(parents=True,exist_ok=True)
  for p in (R.parent/folder).iterdir():
   if p.is_file() and p.suffix in ('.qml','.js','.md'):shutil.copyfile(p,destination/p.name)
