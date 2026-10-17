@@ -11,8 +11,8 @@ rootdir=Path(__file__).resolve().parents[2];out=rootdir/'P1/out/expression';out.
 app=QGuiApplication(sys.argv);app.setOrganizationName("Kumo");app.setOrganizationDomain("kumo.local");engine=QQmlApplicationEngine();warnings=[]
 engine.addImportPath(str(rootdir/'HarmonyAssistant/tests/qml'))
 engine.warnings.connect(lambda ws:warnings.extend(w.toString() for w in ws))
-source=(rootdir/'PerformanceExpression/PerformanceExpression_MS3.qml').read_text(encoding='utf8')
-engine.loadData(source.encode(),QUrl.fromLocalFile(str(rootdir/'PerformanceExpression/PerformanceExpression_MS3.qml')))
+source=(rootdir/'PerformanceExpression/PerformanceExpression.view.qml').read_text(encoding='utf8')
+engine.loadData(source.encode(),QUrl.fromLocalFile(str(rootdir/'PerformanceExpression/PerformanceExpression.view.qml')))
 if not engine.rootObjects():print('\n'.join(warnings));sys.exit(1)
 root=engine.rootObjects()[0];window=QQuickWindow();root.setParentItem(window.contentItem());window.show()
 def capture(name,w,h):

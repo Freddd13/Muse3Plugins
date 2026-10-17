@@ -13,7 +13,7 @@ app.setOrganizationName("HarmonyTests");app.setApplicationName("PanelTests")
 engine=QQmlApplicationEngine()
 engine.warnings.connect(lambda warnings: print('\n'.join(warning.toString() for warning in warnings)))
 engine.addImportPath(str(HERE/'qml'))
-source=(BASE/'HarmonyAssistant_MS3.qml').read_text(encoding='utf-8-sig')
+source=(BASE/'HarmonyAssistant.view.qml').read_text(encoding='utf-8-sig')
 fixture=r'''
     property var fixtureNotes: []
     property int fixtureCommands: 0
@@ -181,7 +181,7 @@ fixture=r'''
 source=source.replace('    Rectangle {\n        id:backdrop',fixture+'\n    Rectangle {\n        id:backdrop',1)
 window=QQuickWindow();window.resize(360,740)
 # loadData with original URL keeps relative JS/component imports working.
-engine.loadData(source.encode('utf-8'),QUrl.fromLocalFile(str(BASE/'HarmonyAssistant_MS3.qml')))
+engine.loadData(source.encode('utf-8'),QUrl.fromLocalFile(str(BASE/'HarmonyAssistant.view.qml')))
 if not engine.rootObjects():sys.exit('QML failed to load')
 root=engine.rootObjects()[0]
 root.setParentItem(window.contentItem());root.setWidth(360);root.setHeight(740)
