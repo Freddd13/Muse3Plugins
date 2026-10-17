@@ -8,7 +8,8 @@ HOST=Path(r'E:\programming\funcodes\muse3_dev\MuseScore')
 def patch(path,old,new):
  p=HOST/path;s=p.read_text(encoding='utf8')
  mirror=ROOT/'native'/path
- if mirror.is_file() and same_file(mirror,p):return
+ # Complete source mirrors supersede the old one-time migration below.
+ if mirror.is_file():return
  if new in s:return
  if s.count(old)!=1:raise RuntimeError('Cannot identify edit in '+path+': '+old[:55])
  p.write_bytes(s.replace(old,new).encode('utf8'))
@@ -19,6 +20,8 @@ def apply():
  state_path=ROOT/'out/applied-native.json';state_path.parent.mkdir(parents=True,exist_ok=True)
  previous=json.loads(state_path.read_text(encoding='utf8')) if state_path.exists() else {}
  pending=[(src,HOST/src.relative_to(ROOT/'native')) for src in (ROOT/'native').rglob('*') if src.is_file()]
+ prefixes=[sys.argv[i+1] for i,arg in enumerate(sys.argv[:-1]) if arg=='--native-prefix']
+ if prefixes:pending=[(src,dst) for src,dst in pending if any(src.relative_to(ROOT/'native').as_posix().startswith(p) for p in prefixes)]
  excluded=set()
  for i,arg in enumerate(sys.argv[:-1]):
   if arg=='--exclude-plugin':excluded.add(sys.argv[i+1])
@@ -36,10 +39,9 @@ def apply():
   else:
    committed=subprocess.run(['git','show','HEAD:'+key],cwd=str(HOST),capture_output=True)
    if committed.returncode or committed.stdout!=dst.read_bytes():raise RuntimeError('目标文件有尚未核对的修改：'+key)
- for src in (ROOT/'native').rglob('*'):
-  if src.is_file():
-   dst=HOST/src.relative_to(ROOT/'native');dst.parent.mkdir(parents=True,exist_ok=True)
-   if not same_file(src,dst):dst.write_bytes(src.read_bytes())
+ for src,dst in pending:
+  dst.parent.mkdir(parents=True,exist_ok=True)
+  if not same_file(src,dst):dst.write_bytes(src.read_bytes())
  if not (ROOT/'native/mscore/plugin/api/scoreobserver.h').is_file():
   p=HOST/'mscore/plugin/api/scoreobserver.h';s=p.read_text(encoding='utf8')
   declarations=['      Q_INVOKABLE QVariantMap stopWorkflowPlayback();','      Q_INVOKABLE QVariantMap referencePlan(const QVariantMap&);','      Q_INVOKABLE QVariantMap startReferencePlayback(const QVariantMap&);','      Q_INVOKABLE QVariantMap stopReferencePlayback();','      Q_INVOKABLE QVariantMap setEditorComparison(const QVariantMap&);','      Q_INVOKABLE QVariantMap setReferenceTracks(const QVariantList&);']
