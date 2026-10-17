@@ -11,9 +11,11 @@ rootdir=Path(__file__).resolve().parents[2];out=rootdir/'P1/out/reference';out.m
 app=QGuiApplication(sys.argv);app.setOrganizationName("Kumo");app.setOrganizationDomain("kumo.local");engine=QQmlApplicationEngine();warnings=[]
 engine.addImportPath(str(rootdir/'HarmonyAssistant/tests/qml'))
 engine.warnings.connect(lambda ws:warnings.extend(w.toString() for w in ws))
-source=(rootdir/'ReferencePlayer/ReferencePlayer_MS3.qml').read_text(encoding='utf8')
+source=(rootdir/'ReferencePlayer/ReferencePlayer.view.qml').read_text(encoding='utf8')
 fixture=r"""
  property bool panelFloating:false
+ property int panelDockArea:Qt.BottomDockWidgetArea
+ function releaseReferenceMedia(media){}
  function newScoreObserver(){return mockObserver}
  function newReferenceMedia(){return mockMedia}
  function fixtureStart(){root.curScore=mockScore;root.run();mockMedia.open("file:///E:/piano.wav")}
@@ -29,6 +31,12 @@ fixture=r"""
   id:mockObserver
   property var score:null;property bool playing:false;property int tick:0
   property string saved:""
+  property var documents:({})
+  function referenceStructureKey(){return "fixture"}
+  function workflowData(section){return documents[section]||({})}
+  function setWorkflowData(section,data){documents[section]=data;return {ok:true}}
+  function referenceFileLocation(path,relative){return {path:path,relative:relative||path,exists:true}}
+  function expressionSelection(){return {notes:[{tick:tick}],scope:analysisScope(false)}}
   function analysisScope(whole){return {start:0,end:1920,firstTrack:0,endTrack:8,firstMeasure:1,lastMeasure:1}}
   function loadConfiguration(name){return {}}
   function saveConfiguration(name,v){return true}
@@ -56,6 +64,7 @@ engine.loadData(source.encode(),QUrl.fromLocalFile(str(rootdir/'ReferencePlayer/
 if not engine.rootObjects():print('\n'.join(warnings));sys.exit(1)
 root=engine.rootObjects()[0];window=QQuickWindow();root.setParentItem(window.contentItem());window.show()
 def capture(name,w,h):
+ root.setProperty("panelDockArea",1 if h<170 else 8)
  window.resize(w,h);root.setWidth(w);root.setHeight(h)
  app.processEvents();QTest.qWait(150)
  image=window.grabWindow();assert not image.isNull();assert image.save(str(out/name))
