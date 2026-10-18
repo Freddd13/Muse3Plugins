@@ -1,12 +1,29 @@
 """Apply this batch after checking every destination; preserve unrelated edits."""
 from pathlib import Path
-import hashlib, json, shutil, subprocess
+import hashlib, json, subprocess
 
 ROOT = Path(__file__).resolve().parent
 HOST = ROOT.parent.parent / 'muse3_dev/MuseScore'
 
-def same(a, b):
-    return a.read_bytes() == b.read_bytes()
+def merge_guide(ours, base, theirs):
+    if ours == base:
+        return theirs
+    if theirs == base or ours == theirs:
+        return ours
+    if theirs.startswith(base):
+        return ours + theirs[len(base):]
+    if ours.startswith(base):
+        return theirs + ours[len(base):]
+    identity = hashlib.sha256(ours + base + theirs).hexdigest()[:16]
+    folder = ROOT / 'out/guide-merge' / identity
+    folder.mkdir(parents=True, exist_ok=True)
+    paths = [folder / name for name in ('ours.md', 'base.md', 'theirs.md')]
+    for path, value in zip(paths, (ours, base, theirs)):
+        path.write_bytes(value)
+    result = subprocess.run(['git', 'merge-file', '-p', *map(str, paths)], capture_output=True)
+    if result.returncode:
+        raise RuntimeError('用户说明有重叠修改，请核对：' + str(folder))
+    return result.stdout
 
 def main():
     from publish_runtime import prepare
@@ -19,10 +36,19 @@ def main():
         pending += [(p, HOST / 'share/plugins' / folder / p.name)
                     for p in (ROOT.parent / folder).iterdir()
                     if p.is_file() and p.suffix in ('.qml', '.js', '.md')]
+    prepared = []
     for src, dst in pending:
-        if not dst.exists() or same(src, dst):
-            continue
         key = dst.relative_to(HOST).as_posix()
+        desired = src.read_bytes()
+        merged = False
+        if key == 'personal/USER_GUIDE.md' and dst.exists() and dst.read_bytes() != desired:
+            base = subprocess.run(['git', 'show', 'HEAD:P2/native/personal/USER_GUIDE.md'], cwd=ROOT.parent, capture_output=True)
+            if base.returncode == 0:
+                desired = merge_guide(desired, base.stdout, dst.read_bytes())
+                merged = True
+        prepared.append((dst, desired))
+        if not dst.exists() or dst.read_bytes() == desired or merged:
+            continue
         actual = hashlib.sha256(dst.read_bytes()).hexdigest()
         if key in previous:
             if actual != previous[key]:
@@ -31,10 +57,10 @@ def main():
             committed = subprocess.run(['git', 'show', 'HEAD:' + key], cwd=HOST, capture_output=True)
             if committed.returncode or committed.stdout != dst.read_bytes():
                 raise RuntimeError('目标有尚未核对的修改：' + key)
-    for src, dst in pending:
+    for dst, desired in prepared:
         dst.parent.mkdir(parents=True, exist_ok=True)
-        if not dst.exists() or not same(src, dst):
-            shutil.copyfile(src, dst)
+        if not dst.exists() or dst.read_bytes() != desired:
+            dst.write_bytes(desired)
         previous[dst.relative_to(HOST).as_posix()] = hashlib.sha256(dst.read_bytes()).hexdigest()
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(json.dumps(previous, indent=2), 'utf8')

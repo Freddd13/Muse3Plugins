@@ -36,3 +36,7 @@ assert.equal(isolated.chord,'C6');assert.equal(t.atTick(connected,480,0).chord,'
 const incremental=t.createBuilder(phrase,config,0);let steps=0;while(!t.step(incremental,1)){assert(++steps<100)}assert.equal(JSON.stringify(incremental.regions),JSON.stringify(connected));
 const afterNoChord=t.build([noChord,frame(480,notes([60,64,67],480,960)),frame(1920,[])],config,0,[]);assert.equal(t.atTick(afterNoChord,0,0).chord,'N.C.');assert.equal(t.atTick(afterNoChord,480,0).root,0);
 console.log('Chord context, spelling, inversions and both minor degree modes passed');
+
+const pref=read("Preferences.js");const oldOptions=pref.defaults();delete oldOptions.resultMode;oldOptions.summaryMode=0;oldOptions.detailMode=1;
+const coherent=pref.clean(oldOptions);assert.equal(coherent.resultMode,0);assert.equal(coherent.summaryMode,coherent.detailMode);
+coherent.resultMode=1;const grouped=pref.clean(coherent);assert.equal(grouped.summaryMode,1);assert.equal(grouped.detailMode,1);

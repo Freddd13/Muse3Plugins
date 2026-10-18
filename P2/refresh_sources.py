@@ -6,6 +6,10 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic='节拍音符字体兼容',path='libmscore/textbase.cpp',symbol='if (family == "Leland Text")',line='1',role='默认节拍字形采用3.6.2尺寸；其它符号和自选字体保留',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp;../../muse3_plugins/P2/compare_fonts.py'),
+ dict(topic='工作视图',path='mscore/workflow/workspaceviews.cpp',symbol='class WorkspaceViews',line='1',role='四种布局、DAW谱面对照、共用动作工具栏及返回乐谱',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
+ dict(topic='独立编辑区域',path='mscore/workflow/editorareas.cpp',symbol='class EditorAreas',line='1',role='悬浮、右侧停靠、放回与各视图的区域保存',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
+ dict(topic='原曲滑块输入',path='share/workflow/panels/WorkflowCommon/SliderNumber.qml',symbol='RowLayout {',line='1',role='原生滑块与数值输入',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
  dict(topic="给定音高写节奏",path="mscore/performanceeditor/rhythmpane.cpp",symbol="RhythmPane::RhythmPane(",line="1",role="录制、导入、拖动草稿、试听和采用",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="节奏音序与时值",path="share/plugins/PerformanceExpression/Rhythm.js",symbol="function build(",line="1",role="给定音高、漏敲多敲、休止与连音组",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp;../../muse3_plugins/PerformanceExpression/tests/test-rhythm.cjs"),
  dict(topic="MIDI录音目录",path="mscore/workflow/midicapture.cpp",symbol='const QString folder=QSettings().value("workflow/recordingDirectory"',line="1",role="沿用录制，默认写入E盘",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),

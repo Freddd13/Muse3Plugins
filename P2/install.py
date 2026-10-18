@@ -1,6 +1,10 @@
 """Update the existing E-drive installation, retaining the preceding program."""
 from pathlib import Path
-import hashlib, shutil, subprocess
+import filecmp, hashlib, shutil, subprocess
+
+def copy_changed(source, destination):
+ if Path(destination).is_file() and filecmp.cmp(source, destination, shallow=False):return destination
+ return shutil.copy2(source, destination)
 R=Path(__file__).resolve().parent;H=R.parent.parent/'muse3_dev/MuseScore'
 I=H/'msvc.install_repair_current_x64'
 source=H/'msvc.build_harmony_release_x64/main/Release/MuseScore3Evo.exe'
@@ -29,7 +33,7 @@ for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon','Arra
 shutil.copytree(H/'share/workflow',I/'workflow',dirs_exist_ok=True)
 package=R/'out/mcp-dist/MuseScoreMCP'
 assert (package/'MuseScoreMCP.exe').is_file(), '请先运行 P2/build_mcp.py'
-shutil.copytree(package,I/'bin/tools/mcp',dirs_exist_ok=True)
+shutil.copytree(package,I/'bin/tools/mcp',dirs_exist_ok=True,copy_function=copy_changed)
 configuration=I/'bin/kumo.ini'
 if not configuration.exists():shutil.copy2(H/'personal/kumo.ini',configuration)
 # Retire only the six known files previously shipped by this project. A changed
@@ -53,7 +57,9 @@ for folder in ('HarmonyAssistant','PerformanceExpression','ReferencePlayer'):
   current.unlink();retired.append(str(current))
 for p in (R/'native/personal').rglob('*'):
  if not p.is_file():continue
- destination=I/'personal'/p.relative_to(R/'native/personal');destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,destination)
+ destination=I/'personal'/p.relative_to(R/'native/personal');destination.parent.mkdir(parents=True,exist_ok=True)
+ maintained=H/'personal/USER_GUIDE.md' if p.relative_to(R/'native/personal').as_posix()=='USER_GUIDE.md' else p
+ shutil.copyfile(maintained,destination)
 print('已更新现有程序：',target)
 print('SHA256',hashlib.sha256(target.read_bytes()).hexdigest())
 print('旧入口已备份并整理：',len(retired))

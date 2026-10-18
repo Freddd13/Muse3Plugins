@@ -7,6 +7,10 @@ env=dict(os.environ,KUMO_MCP_AUTOSTART="0",P0_TEST_SOUNDFONT=str(I/'sound/MuseSc
 batch=os.environ.get('P2_TEST_BATCH','059')
 if os.environ.get('P2_TEST_SPECTRUM'):
  source=source.replace("# Qt's style loader","stage_file(Path("+repr(str(B/'mscore/referenceaudio/Release/kumo_referenceaudio.dll'))+"),runtime/'bin/kumo_referenceaudio.dll')\n# Qt's style loader")
+source=source.replace("# Qt's style loader", "for p in Path("+repr(str(H/'share/workflow'))+").rglob('*'):\n if p.is_file():\n  destination=runtime/'workflow'/p.relative_to(Path("+repr(str(H/'share/workflow'))+"))\n  destination.parent.mkdir(parents=True,exist_ok=True)\n  stage_file(p,destination)\nstage_file(Path("+repr(str(H/'personal/kumo.ini'))+"),runtime/'bin/kumo.ini')\n# Qt's style loader")
+slots=os.environ.get('P2_EXISTING_SLOTS','').split()
+if slots:
+ source=source.replace("[str(target), '-o', str(log) + ',txt']",repr(['__TEST_TARGET__']+slots)+" + ['-o', str(log) + ',txt']").replace("'__TEST_TARGET__'",'str(target)')
 summary=R/('out/'+batch+'-existing.json')
 results=json.loads(summary.read_text('utf8')) if summary.exists() else {}
 for name in (sys.argv[1:] or ('p1native','performanceeditor')):
