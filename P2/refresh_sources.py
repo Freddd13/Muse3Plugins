@@ -6,6 +6,9 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="实时录制对应",path="mscore/workflow/realtimematcher.h",symbol="class RealtimeMatcher",line="1",role="音高集合与起音间隔的有限路径匹配",tests="mtest/mscore/p1native/tst_p1native.cpp"),
+ dict(topic="表达精确选区",path="mscore/workflow/workflowexpression.cpp",symbol="QVariantMap ScoreObserver::expressionSelection",line="1",role="保留所选拍位与谱表范围",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="表达目标与输入",path="share/workflow/panels/PerformanceExpression/ExpressionScopeBar.qml",symbol="ColumnLayout {",line="1",role="目标谱段、设备开关与录制位置",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic='节拍音符字体兼容',path='libmscore/textbase.cpp',symbol='if (family == "Leland Text")',line='1',role='默认节拍字形采用3.6.2尺寸；其它符号和自选字体保留',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp;../../muse3_plugins/P2/compare_fonts.py'),
  dict(topic='工作视图',path='mscore/workflow/workspaceviews.cpp',symbol='class WorkspaceViews',line='1',role='四种布局、DAW谱面对照、共用动作工具栏及返回乐谱',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
  dict(topic='独立编辑区域',path='mscore/workflow/editorareas.cpp',symbol='class EditorAreas',line='1',role='悬浮、右侧停靠、放回与各视图的区域保存',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),

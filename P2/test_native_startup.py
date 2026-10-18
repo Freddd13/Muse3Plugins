@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parent
 HOST = ROOT.parent.parent / "muse3_dev/MuseScore"
 REPO = ROOT.parent.parent / "mcp-musescore"
 RUNTIME = ROOT.parent / "P1/out/final-regression/runtime"
-OUT = ROOT / "out/native-startup-064" / uuid4().hex[:8]
+VERSION = (HOST / 'personal/VERSION').read_text('utf8').strip()
+OUT = ROOT / ('out/native-startup-' + VERSION.replace('.', '')) / uuid4().hex[:8]
 sys.path.insert(0, str(REPO))
 from fastmcp import Client
 
@@ -35,7 +36,7 @@ async def read_score():
     else:
         raise RuntimeError("Automatic connection did not become ready")
     assert instance["pid"] == process.pid
-    assert instance["version"] == "0.64.0", instance
+    assert instance["version"] == VERSION, instance
     environment = dict(os.environ, PATH=os.environ.get("SystemRoot", "C:/Windows") + "/System32",
                        MCP_MUSESCORE_STATE_DIR=str(OUT / "state"), FASTMCP_CHECK_FOR_UPDATES="off")
     async with Client({"mcpServers": {"musescore": {

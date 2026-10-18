@@ -14,4 +14,10 @@ test('large unplayable attack is explained before finger assignment',()=>{let v=
 test('octave voicing proposal retains melody and pitch classes',()=>{let d=data([note(72,0),note(36,0,4),note(60,0,4)]),v=s.generate({kind:'voicing',data:d});assert(v.options.length);for(let o of v.options)for(let c of o.changes){let n=d.notes.find(n=>n.id===c.ref.id);assert.equal(c.pitch%12,n.pitch%12);assert.notEqual(n.track,0);}});
 test('counterpoint keeps continuous voice evidence',()=>{let d=data([note(67,0),note(69,480),note(60,0,4),note(62,480,4),note(65,480,5)]);let config=r.defaults();config.roles={'0':{role:'melody',line:'single',independent:true},'4':{role:'bass',line:'single',independent:true},'5':{independent:false}};let v=s.generate({kind:'counterpoint',data:d,config});assert(v.options.length);assert(v.options.every(o=>o.changes.every(c=>!c.ref.id.includes(':0:'))));});
 test('automatic staff suggestion remains a hand candidate',()=>{let d=data([note(48,0,4)]),state=r.run(d,r.defaults());assert.equal(r.handFor(state,d.notes[0],0).source,'自动推断');let c=r.defaults();c.roles={'4':{hand:'right'}};state=r.run(d,c);assert.equal(r.handFor(state,d.notes[0],0).source,'用户指定');});
+test('unlocking fingerings also removes their constraints from hand allocation',()=>{
+ const native={analyse(notes,pedals,options){assert(notes.every(n=>!n.fingerings||!n.fingerings.length));return {sides:[{hand:'right',notes:notes.map((n,i)=>i),released:[]}]};}};
+ const engine=read('../Suggestions.js',{Rules:r,Harmony:h,PianoHands:native});
+ const d=data([note(60,0,0,480,{fingerings:['1']}),note(64,0,0,480,{fingerings:['1']})]);
+ const value=engine.generate({kind:'fingering',data:d,settings:{lockFingers:false}});assert(value.options.length);assert(value.options[0].changes.length===2);
+});
 console.log(`${count} suggestion tests passed`);
