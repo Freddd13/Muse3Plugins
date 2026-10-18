@@ -6,6 +6,9 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="卷帘写音交互",path="mscore/performanceeditor/rollwritinginteraction.cpp",symbol="void RollWritingBar::begin(",line="1",role="画音、移动、复制、尾端和选择",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="卷帘写音转换",path="mscore/performanceeditor/rollnotation.cpp",symbol="QVariantMap buildRollEdit(",line="1",role="工作线程中的修改范围、声部、时值与连音组",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="卷帘草稿保存",path="mscore/performanceeditor/rollwritingmodel.cpp",symbol="void RollWritingBar::saveDraft(",line="1",role="草稿、试听、采用与撤销",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="频谱显示与颜色",path="mscore/performanceeditor/spectrumdisplay.cpp",symbol="QImage colorSpectrum(",line="1",role="颜色查表、显示增益、叠加透明度",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="频谱节拍操作",path="mscore/performanceeditor/spectrumbeat.cpp",symbol="SpectrumBeatControls::SpectrumBeatControls(",line="1",role="BPM、拍号、第一拍、候选和跟拍",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="频谱标注长度",path="mscore/performanceeditor/spectrumannotation.cpp",symbol="QVariantMap estimateSpectrumExtent(",line="1",role="估计亮线连续范围和常用记谱时值",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
