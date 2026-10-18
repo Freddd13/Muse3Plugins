@@ -6,6 +6,9 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="分段写法删除",path="libmscore/regionalvariants.cpp",symbol="QVariantMap remove(",line="1",role="删除写法、整组与组合，保留当前谱面并一次撤销",tests="mtest/mscore/p1native/regional_070_tests.inc"),
+ dict(topic="谱面按钮位置",path="libmscore/regionalvariants.cpp",symbol="QVariantMap setControlPlacement(",line="1",role="手动位置、单组显隐、随谱保存及撤销",tests="mtest/mscore/p1native/regional_070_tests.inc"),
+ dict(topic="分段写法列表操作",path="mscore/workflow/regionalpanel.cpp",symbol="void removeSelected(",line="1",role="单击切换、明确当前写法、删除与恢复入口",tests="mtest/mscore/p1native/regional_070_tests.inc"),
  dict(topic="VST 音源与效果",path="mscore/workflow/vstpanel.cpp",symbol="void addVstPanelAction(",line="1",role="原生面板、扫描、预设、撤销和独立实例",tests="mtest/mscore/pluginhost/vst_tests.inc"),
  dict(topic="VST 音频图",path="audio/vst/rack.cpp",symbol="struct Rack::Impl",line="1",role="有界 MIDI 队列、串联效果、SF2 混合和延迟补偿",tests="../../muse3_plugins/P2/tests/vst/checks.cpp"),
  dict(topic="VST3 适配",path="audio/vst/vst3plugin.cpp",symbol="class Vst3Plugin",line="1",role="音频、MIDI、参数、状态和插件界面",tests="mtest/mscore/pluginhost/vst_tests.inc"),
