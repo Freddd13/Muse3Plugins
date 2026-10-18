@@ -1,6 +1,6 @@
 # Freddd13 的 Codex / MuseScore 3 Evolution 分支
 
-本分支优先用于个人钢琴编曲、读谱分析和净书辅助，兼容原有 MCP 工具并保留上游说明。请先阅读 [中文 Codex 安装与使用](docs/CODEX_SETUP.md)、[实现原理与钢琴扩展路线](docs/ARCHITECTURE_AND_PIANO.md) 和 [个人开发日志](CHANGELOG_PERSONAL.md)。下文 Claude Desktop 配置与历史示例属于上游资料；本分支入口是 `scripts/install-codex.ps1` 和 `skills/mcp-musescore`。
+本分支优先用于个人钢琴编曲、读谱分析和净书辅助，兼容原有 MCP 工具并保留上游说明。请先阅读 [中文 Codex 安装与使用](docs/CODEX_SETUP.md)、[实现原理与钢琴扩展路线](docs/ARCHITECTURE_AND_PIANO.md) 和 [个人开发日志](CHANGELOG_PERSONAL.md)。下文 Claude Desktop 配置与历史示例属于上游资料；0.63 程序包从“视图 → AI 连接”配置 Codex，自带 MCP exe。源码运行使用 `scripts/install-codex.ps1`。
 
 后续智能分析与写作的数据基础见 [乐谱数据与 AI 上下文设计](docs/AI_SCORE_CONTEXT_DESIGN.md)：统一乐谱模型、分层任务上下文、旋律/和声/演奏/净书视图、原曲对应与分阶段实现。当前选段读取和局部写法已在桥2.2.0／软件0.60.0接入，详见[P2操作与接口](docs/P2_CONTEXT_API.md)。材料解析等后续内容继续按文档推进。
 

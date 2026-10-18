@@ -6,7 +6,7 @@ MuseScore {
     id: root
     menuPath: "Plugins.MuseScore API Server"
     description: "MuseScore Evolution bridge for Codex and MCP clients"
-    version: "2.2.0"
+    version: "2.3.0"
     
     property var arrangementObserver: null
     property var clientConnections: []

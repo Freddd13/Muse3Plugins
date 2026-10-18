@@ -18,6 +18,8 @@ class MuseScoreClient:
         self.timeout = timeout
         self._lock = None
         self._loop = None
+        self.connection_resolver = None
+        self.connection_error = ""
 
     def _command_lock(self):
         # Tests/embedders may reuse a client across sequential event loops.
@@ -35,10 +37,15 @@ class MuseScoreClient:
     async def _connect(self):
         """Connect to the MuseScore WebSocket API."""
         try:
+            if self.connection_resolver is not None:
+                host, port = self.connection_resolver()
+                self.uri = f"ws://{host}:{port}"
             self.websocket = await websockets.connect(self.uri, open_timeout=self.timeout, close_timeout=2, max_size=16 * 1024 * 1024)
+            self.connection_error = ""
             logger.info(f"Connected to MuseScore API at {self.uri}")
             return True
         except Exception as e:
+            self.connection_error = str(e) if self.connection_resolver is not None else ""
             logger.error(f"Failed to connect to MuseScore API: {str(e)}")
             return False
     
@@ -65,6 +72,17 @@ class MuseScoreClient:
         if params is None:
             params = {}
 
+        if self.connection_resolver is not None:
+            try:
+                host, port = self.connection_resolver()
+                uri = f"ws://{host}:{port}"
+                if uri != self.uri:
+                    await self._reset_socket()
+                    self.uri = uri
+            except Exception as error:
+                await self._reset_socket()
+                return {"error": str(error)}
+
         command = {"action": action, "params": params}
         payload = json.dumps(command)
 
@@ -74,7 +92,7 @@ class MuseScoreClient:
         for attempt in range(attempts):
             if not self.websocket:
                 if not await self._connect():
-                    return {"error": "Not connected to MuseScore"}
+                    return {"error": self.connection_error or "Not connected to MuseScore"}
 
             try:
                 logger.info("Sending %s (%d bytes)", action, len(payload.encode("utf8")))

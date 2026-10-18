@@ -9,6 +9,8 @@ def same(a, b):
     return a.read_bytes() == b.read_bytes()
 
 def main():
+    from publish_runtime import prepare
+    prepare()
     state_file = ROOT / 'out/applied.json'
     previous = json.loads(state_file.read_text('utf8')) if state_file.exists() else {}
     pending = [(p, HOST / p.relative_to(ROOT / 'native'))

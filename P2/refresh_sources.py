@@ -36,5 +36,6 @@ for name in ('transcription-separate-059.png','transcription-overlay-059.png','a
  source=R.parent/'P1/out/final-regression'/name
  if source.exists():
   for folder in (R/'docs/images',R/'native/personal/docs/images'):
-   folder.mkdir(parents=True,exist_ok=True);shutil.copyfile(source,folder/name)
+   folder.mkdir(parents=True,exist_ok=True)
+   if not (folder/name).exists():shutil.copyfile(source,folder/name)
 print('Updated',len(result),'source entries and spectrum screenshots')
