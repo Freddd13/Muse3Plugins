@@ -24,6 +24,12 @@ qt=H/'dependencies/qt5.15.2/msvc2019_64/bin'
 if (qt/'Qt5WebSockets.dll').exists():
  assert hashlib.sha256((qt/'Qt5Core.dll').read_bytes()).digest()==hashlib.sha256((I/'bin/Qt5Core.dll').read_bytes()).digest()
  shutil.copy2(qt/'Qt5WebSockets.dll',I/'bin/Qt5WebSockets.dll')
+helper=H/'msvc.build_harmony_release_x64/audio/vst/Release/MuseScoreVstHost.exe'
+assert helper.is_file(),'请先编译 VST 辅助程序'
+copy_changed(helper,I/'bin/MuseScoreVstHost.exe')
+for name,license_name in [('kumo-vst3','LICENSE.txt'),('kumo-vestige','COPYING')]:
+ folder=I/'licenses'/name;folder.mkdir(parents=True,exist_ok=True)
+ for leaf in (license_name,'source.json'):copy_changed(H/'thirdparty'/name/leaf,folder/leaf)
 shutil.copy2(source,target)
 for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon','ArrangementAssistant'):
  destination=I/'plugins'/folder;destination.mkdir(parents=True,exist_ok=True)

@@ -6,6 +6,12 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="VST 音源与效果",path="mscore/workflow/vstpanel.cpp",symbol="void addVstPanelAction(",line="1",role="原生面板、扫描、预设、撤销和独立实例",tests="mtest/mscore/pluginhost/vst_tests.inc"),
+ dict(topic="VST 音频图",path="audio/vst/rack.cpp",symbol="struct Rack::Impl",line="1",role="有界 MIDI 队列、串联效果、SF2 混合和延迟补偿",tests="../../muse3_plugins/P2/tests/vst/checks.cpp"),
+ dict(topic="VST3 适配",path="audio/vst/vst3plugin.cpp",symbol="class Vst3Plugin",line="1",role="音频、MIDI、参数、状态和插件界面",tests="mtest/mscore/pluginhost/vst_tests.inc"),
+ dict(topic="VST2 适配",path="audio/vst/vst2plugin.cpp",symbol="class Vst2Plugin",line="1",role="x64 ABI、CC、预设、CFX 和插件界面",tests="mtest/mscore/pluginhost/vst_tests.inc"),
+ dict(topic="VST 独立进程",path="audio/vst/proxy.cpp",symbol="class Proxy",line="1",role="固定缓冲、独立扫描、进程退出和离线处理",tests="../../muse3_plugins/P2/tests/vst/checks.cpp"),
+ dict(topic="SF2 单乐器效果",path="audio/vst/fluidsource.cpp",symbol="class FluidSource",line="1",role="按需创建发声实例，复用原生 SF2",tests="mtest/mscore/pluginhost/vst_tests.inc"),
  dict(topic="谱行锁定",path="mscore/workflow/systemlocks.cpp",symbol="QVariantMap changeSystemLocks(",line="1",role="分行范围、原生撤销、相邻行边界与解锁",tests="mtest/mscore/pluginhost/system_lock_tests.inc"),
  dict(topic="谱行锁定保存",path="libmscore/layoutbreak.cpp",symbol='xml.tag("kumoSystemLock"',line="1",role="常规分行符附带分组，插入小节后继续对应",tests="mtest/mscore/pluginhost/system_lock_tests.inc"),
  dict(topic="卷帘写音交互",path="mscore/performanceeditor/rollwritinginteraction.cpp",symbol="void RollWritingBar::begin(",line="1",role="画音、移动、复制、尾端和选择",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),

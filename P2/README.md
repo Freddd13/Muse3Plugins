@@ -11,3 +11,9 @@
 0.61：[指法与编配建议](docs/SUGGESTIONS_061_GUIDE.md)、[计算方法](docs/SUGGESTIONS_METHOD.md)。
 
 0.62：[给定音高写节奏](docs/RHYTHM_062_GUIDE.md)、[检查结果](docs/RHYTHM_062_DELIVERY.md)。所有P2功能的操作入口、保存方式和检查结果见[交付总览](docs/P2_DELIVERY.md)。
+
+## 工作区、DAW 与连接功能
+
+完整方案已按六批交付到 0.69.0。操作见 [用户说明](native/personal/USER_GUIDE.md)，本次问题逐项对应见 [交付记录](docs/WORKSPACE_069_DELIVERY.md)。
+
+VST 代码在 `native/audio/vst`，原生面板在 `native/mscore/workflow/vstpanel.cpp`；接口、扫描与效果检查在 `tests/vst`，真实音源、保存和撤销检查在宿主 `mtest/mscore/pluginhost/vst_tests.inc`。默认构建更新依赖，并生成随包的 `MuseScoreVstHost.exe`。

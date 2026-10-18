@@ -12,7 +12,8 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parent
 HOST = ROOT.parent.parent / "muse3_dev/MuseScore"
 REPO = ROOT.parent.parent / "mcp-musescore"
-RUNTIME = ROOT.parent / "P1/out/final-regression/runtime"
+INSTALLED = "--installed" in sys.argv
+RUNTIME = HOST / "msvc.install_repair_current_x64" if INSTALLED else ROOT.parent / "P1/out/final-regression/runtime"
 VERSION = (HOST / 'personal/VERSION').read_text('utf8').strip()
 OUT = ROOT / ('out/native-startup-' + VERSION.replace('.', '')) / uuid4().hex[:8]
 sys.path.insert(0, str(REPO))
@@ -47,7 +48,7 @@ async def read_score():
         notes = result.data["scoreSnapshot"]["notes"]
         assert len(notes) == 6, result.data
     report = {"automaticStartup": True, "version": instance["version"], "notesRead": len(notes),
-              "realProgram": True, "settingsIsolated": True}
+              "realProgram": True, "settingsIsolated": True, "installedPackage": INSTALLED}
     (OUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf8")
     print(json.dumps(report))
 
@@ -62,9 +63,10 @@ def main():
     (settings / "MuseScore3Evo.ini").write_text(
         "[application]\nstartup\\firstStart=false\n"
         "[ui]\napplication\\startup\\showTours=false\n", encoding="utf8")
-    shutil.copy2(HOST / "msvc.build_harmony_release_x64/main/Release/MuseScore3Evo.exe", RUNTIME / "bin/MuseScore3Evo.exe")
-    shutil.copytree(HOST / "share/workflow", RUNTIME / "workflow", dirs_exist_ok=True)
-    shutil.copy2(HOST / "personal/kumo.ini", RUNTIME / "bin/kumo.ini")
+    if not INSTALLED:
+        shutil.copy2(HOST / "msvc.build_harmony_release_x64/main/Release/MuseScore3Evo.exe", RUNTIME / "bin/MuseScore3Evo.exe")
+        shutil.copytree(HOST / "share/workflow", RUNTIME / "workflow", dirs_exist_ok=True)
+        shutil.copy2(HOST / "personal/kumo.ini", RUNTIME / "bin/kumo.ini")
     environment = dict(os.environ, MCP_MUSESCORE_STATE_DIR=str(OUT / "state"), KUMO_MCP_AUTOSTART="1",
                        QT_QUICK_BACKEND="software", QML_DISABLE_DISK_CACHE="1", QT_QPA_PLATFORM="offscreen")
     (OUT / "state").mkdir()
