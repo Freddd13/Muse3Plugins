@@ -6,6 +6,8 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="谱行锁定",path="mscore/workflow/systemlocks.cpp",symbol="QVariantMap changeSystemLocks(",line="1",role="分行范围、原生撤销、相邻行边界与解锁",tests="mtest/mscore/pluginhost/system_lock_tests.inc"),
+ dict(topic="谱行锁定保存",path="libmscore/layoutbreak.cpp",symbol='xml.tag("kumoSystemLock"',line="1",role="常规分行符附带分组，插入小节后继续对应",tests="mtest/mscore/pluginhost/system_lock_tests.inc"),
  dict(topic="卷帘写音交互",path="mscore/performanceeditor/rollwritinginteraction.cpp",symbol="void RollWritingBar::begin(",line="1",role="画音、移动、复制、尾端和选择",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="卷帘写音转换",path="mscore/performanceeditor/rollnotation.cpp",symbol="QVariantMap buildRollEdit(",line="1",role="工作线程中的修改范围、声部、时值与连音组",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="卷帘草稿保存",path="mscore/performanceeditor/rollwritingmodel.cpp",symbol="void RollWritingBar::saveDraft(",line="1",role="草稿、试听、采用与撤销",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),

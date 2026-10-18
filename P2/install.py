@@ -31,6 +31,8 @@ for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon','Arra
   if p.name in {'HarmonyAssistant_MS3.qml','HarmonyAssistant.view.qml','PerformanceExpression_MS3.qml','PerformanceExpression.view.qml'}:continue
   if p.is_file() and p.suffix in ('.qml','.js','.md'):shutil.copyfile(p,destination/p.name)
 shutil.copytree(H/'share/workflow',I/'workflow',dirs_exist_ok=True)
+for translation in (H/'share/locale').glob('*.qm'):
+ copy_changed(translation,I/'locale'/translation.name)
 package=R/'out/mcp-dist/MuseScoreMCP'
 assert (package/'MuseScoreMCP.exe').is_file(), '请先运行 P2/build_mcp.py'
 shutil.copytree(package,I/'bin/tools/mcp',dirs_exist_ok=True,copy_function=copy_changed)

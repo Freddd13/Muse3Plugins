@@ -14,6 +14,10 @@
 #include "workflow/workflowcontext.h"
 #include "workflow/featuregate.h"
 #include "workflow/workspaceviews.h"
+#include "workflow/systemlocks.h"
+#ifdef SCRIPT_INTERFACE
+#include "performanceeditor/rollwriting.h"
+#endif
 #include "workflow/aiconnection.h"
 
 #include <QCheckBox>
@@ -22,6 +26,7 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStyleFactory>
@@ -1680,6 +1685,7 @@ MuseScore::MuseScore()
       addDockWidget(Qt::BottomDockWidgetArea, scoreCmpTool);
 
       _debugLogDock = new DebugLogDock(this);
+      _debugLogDock->setWindowTitle(tr("Debug Log"));
       addDockWidget(Qt::BottomDockWidgetArea, _debugLogDock);
       _debugLogDock->hide();
 
@@ -2364,27 +2370,38 @@ MuseScore::MuseScore()
       a = getAction("no-horizontal-stretch");
       a->setCheckable(true);
       menuDebug->addAction(a);
+
       a = getAction("no-vertical-stretch");
       a->setCheckable(true);
       menuDebug->addAction(a);
+
       menuDebug->addSeparator();
+
       a = getAction("show-segment-shapes");
       a->setCheckable(true);
+      a->setChecked(MScore::showSegmentShapes);
       menuDebug->addAction(a);
+
       a = getAction("show-skylines");
       a->setCheckable(true);
       a->setChecked(MScore::showSkylines);
       menuDebug->addAction(a);
+
       a = getAction("show-bounding-rect");
       a->setCheckable(true);
+      a->setChecked(MScore::showBoundingRect);
       menuDebug->addAction(a);
+
       a = getAction("show-system-bounding-rect");
       a->setCheckable(true);
+      a->setChecked(MScore::showSystemBoundingRect);
       menuDebug->addAction(a);
+
       a = getAction("show-corrupted-measures");
       a->setCheckable(true);
-      a->setChecked(true);
+      a->setChecked(MScore::showCorruptedMeasures);
       menuDebug->addAction(a);
+
       a = getAction("relayout");
       menuDebug->addAction(a);
       a = getAction("qml-reload-source");
@@ -2398,8 +2415,12 @@ MuseScore::MuseScore()
 
       connect(_debugLogAction, &QAction::toggled,
               this, &MuseScore::showDebugLog);
+
       connect(_debugLogDock, &QDockWidget::visibilityChanged,
-              _debugLogAction, &QAction::setChecked);
+              this, [this](bool visible) {
+            QSignalBlocker blocker(_debugLogAction);
+            _debugLogAction->setChecked(visible);
+            });
 
       menuDebug->addAction(_debugLogAction);
       Workspace::addActionAndString(_debugLogAction, "debug-log");
@@ -2690,6 +2711,8 @@ void MuseScore::retranslate()
             _debugLogAction->setText(tr("Debug Log"));
       if (_debugLogDock)
             _debugLogDock->setWindowTitle(tr("Debug Log"));
+      if (pianorollDock)
+            pianorollDock->setWindowTitle(tr("Piano Roll Editor"));
 
       aboutAction->setText(tr("&About…"));
       aboutQtAction->setText(tr("About &Qt…"));
@@ -2864,6 +2887,10 @@ void MuseScore::updateMenus()
             if (!menuView->actions().contains(action)) menuView->addAction(action);
       if (auto action = findChild<QAction*>("kumo-user-guide"))
             if (!menuHelp->actions().contains(action)) menuHelp->addAction(action);
+      addSystemLockActions(menuView);
+#ifdef SCRIPT_INTERFACE
+      if (!menuView->actions().contains(rollWritingAction())) menuView->addAction(rollWritingAction());
+#endif
       addWorkspaceViews(menuView);
       applyPersonalFeatureVisibility(this);
       setMenuTitles();
@@ -3663,6 +3690,30 @@ void MuseScore::showElementContext(Element* el)
             return;
       startDebugger();
       debugger->setElement(el);
+      }
+
+//---------------------------------------------------------
+//   stackDockAboveDebugLog
+//---------------------------------------------------------
+
+void MuseScore::stackDockAboveDebugLog(QDockWidget* dock)
+      {
+      if (!dock)
+            return;
+
+      QDockWidget* debugLog =
+            findChild<QDockWidget*>("debug-log", Qt::FindDirectChildrenOnly);
+
+      if (!debugLog
+          || dock == debugLog
+          || !debugLog->isVisible()
+          || debugLog->isFloating()
+          || dockWidgetArea(debugLog) != Qt::BottomDockWidgetArea
+          || dock->isFloating()
+          || dockWidgetArea(dock) != Qt::BottomDockWidgetArea)
+            return;
+
+      splitDockWidget(dock, debugLog, Qt::Vertical);
       }
 
 //---------------------------------------------------------
@@ -5254,15 +5305,10 @@ void MuseScore::changeState(ScoreState val)
                               QSizePolicy policy(QSizePolicy::Maximum, QSizePolicy::Maximum);
                               textTools()->widget()->setSizePolicy(policy);
                               }
-                        if (pianorollDock
-                            && pianorollDock->isVisible()
-                            && !pianorollDock->isFloating()
-                            && dockWidgetArea(pianorollDock) == Qt::BottomDockWidgetArea) {
-                              splitDockWidget(pianorollDock, textTools(), Qt::Vertical);
-                              }
-                        else if (timelineScrollArea()) {
-                              splitDockWidget(textTools(), timelineScrollArea(), Qt::Vertical);
-                              }
+
+                        QMainWindow::addDockWidget(Qt::BottomDockWidgetArea,
+                                                   textTools(),
+                                                   Qt::Vertical);
 
                         textTools()->show();
                         }
@@ -6288,6 +6334,8 @@ void MuseScore::showPianoKeyboard(bool visible)
             connect(_pianoTools, SIGNAL(visibilityChanged(bool)), a, SLOT(setChecked(bool)));
             }
       if (visible) {
+            stackDockAboveDebugLog(_pianoTools);
+
             reDisplayDockWidget(_pianoTools, visible);
             if (pianorollDock
                 && pianorollDock->isVisible()
@@ -7599,10 +7647,20 @@ void MuseScore::cmd(QAction* a, const QString& cmd)
                         }
                   }
             else if (cmd == "show-debug") {
-                  MScore::showCorruptedMeasures = a->isChecked();
-                  MScore::showBoundingRect = a->isChecked();
-                  MScore::showSegmentShapes = a->isChecked();
-                  MScore::showSkylines = a->isChecked();
+                  const bool checked = a->isChecked();
+
+                  MScore::showCorruptedMeasures = checked;
+                  MScore::showBoundingRect = checked;
+                  MScore::showSegmentShapes = checked;
+                  MScore::showSkylines = checked;
+
+                  getAction("show-corrupted-measures")->setChecked(checked);
+                  getAction("show-bounding-rect")->setChecked(checked);
+                  getAction("show-segment-shapes")->setChecked(checked);
+                  getAction("show-skylines")->setChecked(checked);
+
+                  showDebugLog(checked);
+
                   if (cs) {
                         cs->setLayoutAll();
                         cs->update();
