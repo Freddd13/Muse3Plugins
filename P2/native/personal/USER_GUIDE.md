@@ -1,6 +1,6 @@
 # MuseScore Evolution 个人功能说明
 
-当前个人版本：**0.65.0** · Kumo branch / Freddd13。提交定位：`personal-v0.65.0`。
+当前个人版本：**0.66.0** · Kumo branch / Freddd13。提交定位：`personal-v0.66.0`。
 
 先按下面的任务找到入口。每章有完整操作例子、按钮说明、保存和撤销方法。“帮助 → 个人功能说明”可以在软件里直接阅读。
 
@@ -13,7 +13,7 @@
 | 查看和弦、级数和构成音 | 下文“和弦助手” |
 | 听原曲和比较谱段 | [原曲参考](docs/REPAIR_056_GUIDE.md) |
 | 导入或录制演奏，再使用力度 | [演奏表达完整步骤](docs/WORKSPACE_065_GUIDE.md) |
-| 对照频谱听音、标注与输入 | [频谱扒谱](docs/P2_SPECTRUM_059_GUIDE.md) |
+| 对照频谱听音、标注与输入 | [频谱扒谱完整步骤](docs/WORKSPACE_066_GUIDE.md) |
 | 给已经写好的音高换节奏 | [写节奏](docs/P2_RHYTHM_062_GUIDE.md) |
 | 查看指法、分手、配音与对位建议 | [编配建议](docs/P2_SUGGESTIONS_061_GUIDE.md) |
 | 分享前统一关闭个人工具 | [kumo.ini 开关](docs/WORKSPACE_063_GUIDE.md) |

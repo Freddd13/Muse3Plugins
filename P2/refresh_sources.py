@@ -6,6 +6,11 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="频谱显示与颜色",path="mscore/performanceeditor/spectrumdisplay.cpp",symbol="QImage colorSpectrum(",line="1",role="颜色查表、显示增益、叠加透明度",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="频谱节拍操作",path="mscore/performanceeditor/spectrumbeat.cpp",symbol="SpectrumBeatControls::SpectrumBeatControls(",line="1",role="BPM、拍号、第一拍、候选和跟拍",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="频谱标注长度",path="mscore/performanceeditor/spectrumannotation.cpp",symbol="QVariantMap estimateSpectrumExtent(",line="1",role="估计亮线连续范围和常用记谱时值",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
+ dict(topic="频谱听辨均衡",path="mscore/referenceaudio/auditionfilter.cpp",symbol="AuditionFilter::AuditionFilter(",line="1",role="独立双声道均衡与选频听",tests="mtest/mscore/spectrum/tst_spectrum.cpp"),
+ dict(topic="原曲速度估计",path="mscore/referenceaudio/tempoestimate.cpp",symbol="QVariantMap estimateTempo(",line="1",role="起音能量、周期与第一拍候选",tests="mtest/mscore/spectrum/tst_spectrum.cpp"),
  dict(topic="实时录制对应",path="mscore/workflow/realtimematcher.h",symbol="class RealtimeMatcher",line="1",role="音高集合与起音间隔的有限路径匹配",tests="mtest/mscore/p1native/tst_p1native.cpp"),
  dict(topic="表达精确选区",path="mscore/workflow/workflowexpression.cpp",symbol="QVariantMap ScoreObserver::expressionSelection",line="1",role="保留所选拍位与谱表范围",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
  dict(topic="表达目标与输入",path="share/workflow/panels/PerformanceExpression/ExpressionScopeBar.qml",symbol="ColumnLayout {",line="1",role="目标谱段、设备开关与录制位置",tests="mtest/mscore/pluginhost/tst_pluginhost.cpp"),
