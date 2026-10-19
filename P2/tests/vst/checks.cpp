@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QJsonDocument>
+#include <QDataStream>
 #include <QProcess>
 #include <QTest>
 #include <algorithm>
@@ -26,6 +27,30 @@ class Checks : public QObject {
         .toMap();
   }
 private Q_SLOTS:
+  void ariaSerializationCounterKeepsSoundChanges() {
+    auto configuration = [](int counter, double volume, const QString& vendor) {
+      const auto xml = QString("<AriaSave productID=\"1016\"><Settings sc=\"%1\" quality=\"1\"/>"
+                               "<Slot id=\"0\" sc=\"%1\"><Main value=\"%2\"/></Slot>"
+                               "<EffectSlot id=\"0\" sc=\"%1\"/></AriaSave>")
+                           .arg(counter).arg(volume).toUtf8();
+      QByteArray chunk("CEGP", 4);
+      QDataStream length(&chunk, QIODevice::Append);
+      length.setByteOrder(QDataStream::LittleEndian);
+      length << quint32(xml.size());
+      chunk += qCompress(xml).mid(4);
+      const auto state = QJsonDocument::fromVariant(
+          QVariantMap{{"chunk", QString::fromLatin1(chunk.toBase64())}}).toJson(QJsonDocument::Compact);
+      const QVariantMap source{{"plugin", QVariantMap{{"format", "VST2"}, {"vendor", vendor}}},
+                               {"state", QString::fromLatin1(state.toBase64())}};
+      return QVariantMap{{"slots", QVariantList{QVariantMap{{"source", source}}}}};
+    };
+    const auto original = configuration(1, .75, "Garritan");
+    const auto copy = original;
+    QVERIFY(sameConfiguration(original, configuration(2, .75, "Garritan")));
+    QVERIFY(!sameConfiguration(original, configuration(2, .25, "Garritan")));
+    QVERIFY(!sameConfiguration(configuration(1, .75, "Other"), configuration(2, .75, "Other")));
+    QCOMPARE(original, copy);
+  }
   void initTestCase() {
     auto r =
         scan(QCoreApplication::applicationDirPath() + "/KumoTestEffect.dll");
