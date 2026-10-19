@@ -1,6 +1,6 @@
 # MuseScore Evolution 个人功能说明
 
-当前个人版本：**0.70.0** · Kumo branch / Freddd13。提交定位：`personal-v0.70.0`。
+当前个人版本：**0.71.0** · Kumo branch / Freddd13。提交定位：`personal-v0.71.0`。
 
 先按下面的任务找到入口。每章有完整操作例子、按钮说明、保存和撤销方法。“帮助 → 个人功能说明”可以在软件里直接阅读。
 
@@ -562,3 +562,186 @@ Windows 安装需要同 SDK 的 QtWebSockets QML 模块和 `Qt5WebSockets.dll`�
 ## 0.57 的力度对比
 
 新导入和录制默认采用全部演奏力度，并逐音固定保存。编辑器默认同音对比，可切换真实播放时间；原值与拟采用值用并列实心柱显示。完整操作见[演奏力度说明](docs/REPAIR_057_GUIDE.md)。
+
+
+## Kumo Score Study 0.420：八度、括号与swing小样（2026-10-18）
+
+本机官谱字形研究扩至90个码位。新增sf、8va/8、音符括号、等号/近似等号、五种swing说明图形及短下符尾备选，统一全/半休止加线形式，并修正X符头的上下接杆点。完整保留Leland未改字形，音乐493→501字、Text182→247字；尚未宣布整套字体或所有出现符号已完成。
+
+取得本机 `mcp-musescore/fonts/kumo-engrave/dist/kumo-score-study-0.420-local.zip`，将其中 `Kumo Score Study` 与 `Kumo Score Study Text` 两个完整文件夹复制到偏好设置指定的 Score Fonts 路径并重启。在乐谱独立副本的 **格式→样式→乐谱** 同时选择这两个家族，第一轮保持其它样式。已有0.410时成对更换两个家族的OTF/JSON后重启即可；无需重装MCP、skill或Windows字体。
+
+sf、八度线和音符括号仍用软件原有操作；速度近似等号与swing有独立Unicode文字入口，选中相应字符设置为Kumo Score Study Text，详见 [额外符号说明](../../../mcp-musescore/fonts/kumo-engrave/TEXT_EXTRAS.md)。短下符尾只保存为显式备选，不会替换正常音符；swing图形不改变节奏语义或回放。
+
+固定personal0.21宿主原生检查：自制钢琴谱、上下X符干与二度和弦、音符/变音括号、谱外Rest、8va/8及swing混排均已查看；十组复合力度在正常分字母与整字形路径的墨迹IoU均为1.0。构建后核对字体覆盖、未改轮廓/字宽、GPOS/GDEF及外框。未宣称当前新宿主或用户谱已回归，连续波线/端部接缝、曲线质量和审美仍在研究。
+
+参考PDF全部只读，原件哈希核对未变，用户MSCZ本轮未打开或修改。只更新本体仓库用户说明，不改本体代码或个人软件版本。源码提交 `Freddd13/mcp-musescore@77106bc`；[字体研究及安装](../../../mcp-musescore/fonts/kumo-engrave/README.md)、[验证范围](../../../mcp-musescore/fonts/kumo-engrave/CORPUS_STUDY.md)。
+
+
+## Kumo Score Study 0.430：波线修正与用户谱副本（2026-10-18）
+
+本机官谱字形小样修正trill波线偏低的问题，按原页重叠墨迹取正确重复周期；琶音方向端部用Leland箭头适配新主体，保留三次曲线。当前处理92码位，音乐501字、Text249字，未修改部分保持Leland。全部音乐角色与原始曲线质量仍在研究。
+
+使用本机 `mcp-musescore/fonts/kumo-engrave/dist/kumo-score-study-0.430-local.zip`，将两个完整家族文件夹放到偏好设置的 Score Fonts 路径并重启；乐谱副本中同时选择 Kumo Score Study 与 Kumo Score Study Text。已有旧小样时成对更新两个家族的OTF/JSON再重启即可，无需重装MCP、skill或Windows字体。保持原有梁、间距和页面设置，先看字体本身的变化。
+
+固定0.21和当前安装目录宿主已渲染普通/上下方向琶音的短、中、长形态，trill及跨系统延续。当前安装宿主还完成常用谱、扩展谱、92字图录与十组力度；力度分字母/整字形墨迹IoU均为1.0。当前宿主二进制SHA256为 `f14b2a0dd24b2ff9052ce2a32ff4d547194124210ac3d7b3ee13f92e85df472a`，按此快照定位，不将工作区版本号视为二进制验证证据。
+
+只读《如果有来生-release5.mscz》创建字体副本：改名Leland Control为9页，Study为8页；这只是字体输入导致的分页变化，不等于布局质量排名。已浏览8页联系表与末页细节；程序核查除两项字体样式外XML一致，归档附件字节相同，原件SHA不变。没有覆盖用户PDF/MSCZ，也没有更改软件本体或当前用户设置。
+
+源码 `Freddd13/mcp-musescore@037da3c`；[安装说明](../../../mcp-musescore/fonts/kumo-engrave/README.md)、[波线与用户谱验证](../../../mcp-musescore/fonts/kumo-engrave/WAVE_STUDY.md)。本体仓库本轮只附加此用户说明。
+
+
+## Kumo Score Study 0.440：参考页曲线接入字库（2026-10-18）
+
+总处理码位保持92，本轮改善其中42个字形的轮廓：常规符头、G/F谱号、主要休止与旗尾、拍号、力度、踏板及波线等采用页面矢量或配套适配。41个含1,212段三次曲线，升号主体为直线；音乐501字、Text249字，未改部分继续保留Leland。音乐OTF从约1.63MB降至0.86MB，剩余角色与轮廓仍在研究。
+
+本机包为 `mcp-musescore/fonts/kumo-engrave/dist/kumo-score-study-0.440-local.zip`。查看偏好设置的 Score Fonts 路径后退出软件，将两个完整字体家族目录放入该路径，重新打开。在乐谱副本的 **格式→样式→乐谱** 同时选择 **Kumo Score Study** 与 **Kumo Score Study Text**，保持其它样式。已有旧小样时先退出，再成对更换两个家族的OTF/JSON即可；不需重装MCP、skill或Windows字体。
+
+40项原页来源/派生与最终OTF比较通过；复合对象按原始轮廓单独验证，避免裁图混入相邻笔画，琶音整数周期量化单独记录。当前宿主完成常用谱、扩展谱、长短方向琶音/跨系统trill、92字图录、十组力度和用户谱副本；力度分字母/完整字形墨迹IoU均为1.0。
+
+《如果有来生》字体副本仍为Study8页/改名Leland Control9页，这不作为布局质量排名。原件SHA、除两项字体外的主XML和归档附件保持；已查看8页联系表与第2页细节。当前验证宿主二进制SHA256为 `8eab62b8569baece94da20e008855f283e08231155ca7b7d5e334e8abef5a83a`。本轮只附加本体用户说明，不改软件代码、用户设置或原PDF/MSCZ。
+
+源码 `Freddd13/mcp-musescore@2b20152`；[安装说明](../../../mcp-musescore/fonts/kumo-engrave/README.md)、[来源与曲线验证](../../../mcp-musescore/fonts/kumo-engrave/VECTOR_STUDY.md)。
+
+## 官谱字体研究0.450：补少见角色与大括号（2026-10-18）
+
+继续按所给Animenz官谱实际字形推进，全目录已清点146份PDF/1,135页，尚未完成全部符号。当前108个处理码位，本轮新增16个：圈叉符头、呼吸、上下marcato-staccato、32分上/内部符尾、独立滑音段、两道震音、m/s/z、反复点及四种brace尺寸。15个新增字形保留曲线；震音错误Unicode映射明确回退实际字符渲染。未修改部分保持完整Leland，音乐502字/Text262字。
+
+本机包 `mcp-musescore/fonts/kumo-engrave/dist/kumo-score-study-0.450-local.zip`。退出Evolution后成对更换Score Fonts路径下Kumo Score Study与Kumo Score Study Text两个完整文件夹，重启。在谱子独立副本的 **格式→样式→乐谱** 同时选择两个家族，保持其它样式。无需重装MCP、skill或Windows字体；圈叉、呼吸、奏法、反复号与大括号使用原有界面操作。
+
+原生滑音目前复用wiggleTrill，Tremolo使用几何；独立新增字形不自动替代这两个原生路径。大括号按宿主特殊倍率适配，检查1/2/3/4/6谱表，三个备选尺寸是派生适配，并非恢复四套原版光学尺寸。固定0.21宿主SHA7581cb76完成常用/扩展/新角色/波线/108字图录/十组力度与用户谱副本；原PDF/MSCZ、除字体字段外音乐XML和附件保持，Control/Study在此宿主均9页。
+
+本轮repair_current宿主SHA59e245e0导入测试谱时退出码3221226356；旧0.440字体及空私有字体目录也复现，尚未定位原因，未将当前宿主记作通过。故本包当前兼容证据以固定宿主为准。失败证据与显示路径发现已同步净书任务，本轮只追加用户说明，未改本体代码或用户设置。
+
+源码 `Freddd13/mcp-musescore@02cee88`；[安装说明](../../../mcp-musescore/fonts/kumo-engrave/README.md)、[来源与验证边界](../../../mcp-musescore/fonts/kumo-engrave/OBSERVED_SYMBOLS.md)。
+
+## 官谱字体研究0.460：32分下符尾、尖音保持与曲线改善（2026-10-19）
+
+本机小样推进到112个处理码位。按官谱实际对象组合补齐32分下符尾/内部下符尾，以及上下marcato-tenuto（尖音＋保持音）。正常32分下音符现在直接使用新字形，不需要输入历史U+F706备选来手拼；组合奏法从原有奏法记号操作。另35个旧字形换为通过原图核对的曲线/直线，5个错映射拒绝并保留原轮廓。
+
+本机包 `mcp-musescore/fonts/kumo-engrave/dist/kumo-score-study-0.460-local.zip`。退出Evolution，成对更换Score Fonts路径下Kumo Score Study和Kumo Score Study Text两个完整文件夹，重启；在独立谱子副本的 **格式→样式→乐谱** 同时选两个家族，保持其它参数。无需重装MCP、skill或Windows字体。未改部分继续完整保留Leland，音乐502字、Text266字。
+
+39项原页来源/派生对最终OTF比较通过，未缩放尺寸差≤2像素；86个字形含三次曲线。固定0.21宿主SHA7581cb76完成常用/扩展/新角色、五种brace跨度、波线、112字图录和十组力度，已查看原生上下奏法和用户谱9页联系表。Control/Study均9页，用户原件及除两项字体外的XML/归档附件保持。当前repair_current仍为上轮失败SHA59e245e0，未重复同一失败测试、未宣称通过。
+
+全目录仍146份PDF；A064的7,299路径全部纳入复核计数，补回128个可见对象，864组24张联系表已浏览；10项弧线情境的孤立渲染异常单列。全目录角色和剩余映射仍未结案，不将数量当作全目标完成证明。本轮仅追加用户说明，不改本体代码或用户设置。
+
+源码 `Freddd13/mcp-musescore@9487cef`；[安装说明](../../../mcp-musescore/fonts/kumo-engrave/README.md)、[来源与验证边界](../../../mcp-musescore/fonts/kumo-engrave/CURVE_REFINEMENT.md)。
+
+
+## Kumo Score Study 0.470 本机字体研究（2026-10-19）
+
+本轮将sf、8va/数字8、音符左右括号、速度八分及三项swing等9个旧字形改为与所给官谱原图核对过的字符曲线。仍处理112码位，95个字形含三次曲线，完整Leland底库保持；这不表示全目录所有角色已完成。速度八分先整体核对音符及相邻附点，再只取音符，避免把附点误做进字形。Coda和下方重音断音的替代映射不符原图，保留此前轮廓。
+
+本机包位于mcp-musescore的`fonts/kumo-engrave/dist/kumo-score-study-0.470-local.zip`。退出Evolution，将Kumo Score Study与Kumo Score Study Text两个完整文件夹成对更新到偏好设置的Score Fonts目录，重启；在乐谱独立副本的“格式→样式→乐谱”同时选择两者，第一轮保持其它样式。普通sf、八度线和括号仍用原有操作，独立swing入口见[字体使用说明](../../../mcp-musescore/fonts/kumo-engrave/TEXT_EXTRAS.md)。无需重装MCP、skill或Windows字体。
+
+六项单字符与三项混排均通过最终OTF/原PDF墨迹对照；混排从生成的OTF回读曲线，以固定物理尺度回放。固定0.21宿主完成全套原生SVG/PNG、112字图录、十组力度及用户谱副本检查，原件、音乐内容和附件保持。当前repair_current此前导入崩溃的独立问题仍未定位，未称其通过。详见[来源、验收及余项](../../../mcp-musescore/fonts/kumo-engrave/REMAINING_CURVES.md)。
+
+字体源码提交`Freddd13/mcp-musescore@5399761`（codex/musescore-evolution）；参考轮廓与字体包仅保留本机研究，未公开提交。此次只更新本体仓库用户说明，不改原生代码或个人软件版本。
+
+
+## Kumo Score Study 0.480：修正力度、八度与踏板大小（2026-10-19）
+
+用户指出此前预览mf及八度标记偏小。已确认0.470把Music轮廓按相同EM尺寸写入Text，没有适配文字使用路径；这是字体构建问题，不应让用户调大全谱字号补救。本轮只等比修正19个Text字形：力度字母及完整组合1.9倍，8va/数字8为1.1倍，Ped.1.6倍，解除星号1.15倍。Music502字形和度量完全保持，原谱样式、音乐与附件不变。
+
+同一固定0.21宿主、同谱距实测：用户谱mf高度原字体2.585sp，0.470仅1.308sp，修正为2.485sp；数字8、完整8va、Ped.及星号也接近原有大小。2倍八度试验明显过大已拒绝，不能由理论EM换算代替实际谱面核对。十组力度原生组合/单字对照保持，用户谱Control/Study副本均9页。来源/实际尺寸和宿主限制见[TEXT_SIZING](../../../mcp-musescore/fonts/kumo-engrave/TEXT_SIZING.md)。当前安装版此前的独立导入异常仍未解决，不能将固定宿主通过称作当前版通过。
+
+更新本机包`fonts/kumo-engrave/dist/kumo-score-study-0.480-local.zip`：退出Evolution，将Study与Study Text两个完整文件夹成对替换到私有Score Fonts目录，重启；在乐谱独立副本同时选择两者，保留原字号与其它样式。无需重装MCP、skill或Windows字体。[安装说明](../../../mcp-musescore/fonts/kumo-engrave/README.md)。
+
+字体源码提交`Freddd13/mcp-musescore@ef09156`（codex/musescore-evolution）。本次只同步本体用户说明，不改原生代码或个人软件版本；后续字体更新须同时核查实际尺寸和周围记谱层次。
+
+
+## Kumo Score Study 0.480：当前安装版验收与角色核查（2026-10-19）
+
+当前安装目录的程序已更新为SHA256 `4d739629b557e1393fe764490362d4ac3e40572d4060dba685110b4bc2df5304`。本轮重新完成全套字体注册、常用/扩展/新角色、五种brace跨度、波线、112字图录、十组力度与用户谱归档副本验证；mf、8/8va、Ped.和解除星号的实际尺寸与固定宿主一致。字体文件仍为0.480，原件、除字体字段外的音乐XML与归档附件保持。此前崩溃的是另一份旧二进制，本轮没有定位其根因。
+
+本机包`fonts/kumo-engrave/dist/kumo-score-study-0.480-current-local.zip`更新随包说明，字体与上一0.480包相同；已有0.480无需重复换字体。首次试用仍退出Evolution，成对复制Study/Study Text完整文件夹到私有Score Fonts目录，重启，在独立谱副本选择两者；保留原字号和其它样式。无需重装MCP/skill。详见[当前宿主及覆盖说明](../../../mcp-musescore/fonts/kumo-engrave/COVERAGE_RECONCILIATION.md)。
+
+两宿主共有23张输出中21张逐像素相同。另两张为两种字体的用户谱p8：新宿主各多一段TextLine虚线，其余SVG元素保持；没有改原谱消除它，宿主行为改变原因仍待进一步核查。不能把这段差异说成字体大小变化或整谱完全等价。
+
+另将156个低匹配代表图写为明确角色对应，45项回原页确认；不少自动标签实际是滑音、琶音、拍号或音符括号。对应目标均存在；9项Leland回退实际轮廓/度量保持。1,179成员的具体语义与其它图录仍未逐一完成，原生滑音仍复用trill波形，后续最小适配另做。
+
+脚本及说明提交`Freddd13/mcp-musescore@339a2b5`（codex/musescore-evolution）。此次只同步本体用户说明，不改原生代码或个人软件版本。
+
+## **0.71.0**：字体专用波浪滑音
+
+外部音乐字体可自带波浪滑音字形声明。更新支持此声明的字体包后，仍用原有波浪滑音操作；无需额外MCP或插件。选择字体在“格式 → 样式 → 乐谱”，首次使用请在乐谱副本比较。私有字体的OTF与JSON成对更新并重启，原谱的字号、音符和附着保持。旧字体和内置字体保持旧波形，旧程序忽略声明仍正常打开谱面。
+
+当前字体试验Kumo Score Study 0.490只增加声明，保留0.480校正后的mf、八度与踏板尺寸；专用滑音效果需要0.71宿主。声明无效或字库缺字自动沿用旧波形。详细操作、回退和测试范围见[字体净书接口](docs/font-engraving.md)。提交主题 `Support opt-in external font wavy glissando glyphs`，定位 `personal-v0.71.0`。当前安装程序未因源码分支提交而自动替换。
+
+
+## Kumo Score Study 0.500：跨字体图录核查与两枚曲线改善
+
+字体小样在0.490基础上，仅把Coda及下方重音断音的栅格描边改为另两处官谱实例中已核查的实际曲线。最终OTF与原图墨迹IoU分别0.9893、0.9767，外框差不超过1像素；另一caesura候选未过门槛，保留旧形。仍112处理码位，97枚含三次曲线，未改字形保持Leland。来源、范围与图例见[图录核查及改善](../../../mcp-musescore/fonts/kumo-engrave/CATALOG_COVERAGE.md)。
+
+7套音乐图录399个编码选样（396有墨迹）已有明确对应；269隐藏字体组按展示样本区分文字/音乐，13组另有全对象无墨迹检查。选样不是全目录逐对象认证，A064路径、跨PDF编码冲突及部分成员仍待核查；尚未宣布全部符号目标完成。
+
+当前0.71隔离宿主完成原生全套、真实Coda Marker/Articulation、十组力度与用户谱副本检查；mf、8/8va、Ped.和星号实际大小与0.490完全保持。原MSCZ哈希、除两项字体字段外音乐XML及附件保持，副本仍9页。
+
+本机包`fonts/kumo-engrave/dist/kumo-score-study-0.500-local.zip`，退出Evolution，成对更新私有Score Fonts中的Study与Study Text完整文件夹并重启；在独立谱副本选择两者，保持原字号及排版。无需重装MCP、skill或Windows字体。旧包保留，专用滑音仍需个人0.71。没有替换当前安装程序。
+
+字体工具提交`Freddd13/mcp-musescore@6711ebc`，分支codex/musescore-evolution。仅同步本体用户说明，原生代码与个人软件版本仍为0.71；参考轮廓及字体包只留本机研究。
+
+## 字体研究：A064路径用途与尺寸保护补记（2026-10-19）
+
+Study仍为0.500。本轮没有更换字体、字号或用户乐谱；既有mf、八度及踏板的Text校准保持，同宿主／谱距回归与0.490一致。早期mf偏小来自Text适配错误，已在0.480修复；不要通过增大原谱字号补救旧包问题。
+
+A064《in the pool》的864个路径代表已保存用途决定，65处原页情境核查并完成7,299项填充路径的成员归属。十项旧空白异常均以精确反向边和4x／16x单独渲染证明为填充抵消，无需补字。普通文字、连音／速度数字、八度数字及页面线弧分开，未把形状匹配结果直接当音乐语义；不宣称所有成员均逐个认证或全目录目标完成。详情见[路径角色与具体例子](../../../mcp-musescore/fonts/kumo-engrave/PATH_ROLE_COVERAGE.md)及[实际大小保护](../../../mcp-musescore/fonts/kumo-engrave/TEXT_SIZING.md)。
+
+继续使用既有[0.500包和成对字体安装方法](../../../mcp-musescore/fonts/kumo-engrave/CATALOG_COVERAGE.md)，本轮无需重装字体、MCP或skill。未处理角色保留Leland，原PDF／MSCZ只读。提交定位 `Freddd13/mcp-musescore@dc73cb5`（codex/musescore-evolution）；本体仓库仅补用户说明，没有改软件代码或个人版本。
+
+## 字体研究：空白图录与跨PDF编码核查（2026-10-19）
+
+Study保持0.500，不改字形、字号、软件代码或个人版本，无需重新安装字体、MCP或skill。字体项目当前试用说明已统一指向0.500包，保留旧包供历史对照。
+
+遍历117份使用Chaconne／CIDFont+F1的PDF，三项旧空白图录对应457个源字符位置均未发现墨迹，另区分298个PDFium自动生成间隔；两项无字图接口返回的空格对象在原页隔离后32／64倍渲染均白，原件SHA保持。八份特殊编码谱的296逐PDF键样本、65组代表及18处原页已核对，纠正mf、mp、踏板、速度音符等跨PDF同码误认；Chaconne U+004B的选样应为八分上符尾。其实际字形均已有对应，当前Music／Text哈希与上一轮完全一致，mf及八度等尺寸校准保持。见[具体编码差异及检查范围](../../../mcp-musescore/fonts/kumo-engrave/ENCODING_VARIANTS.md)。
+
+这不等于全目录所有对象语义均逐一认证；其它编码冲突及隐藏字体未展示字符继续检查，未处理部分保留Leland。原PDF／MSCZ只读。本轮提交 `Freddd13/mcp-musescore@3a25fe3`（codex/musescore-evolution）；本体仓库仅同步用户说明。
+
+## 字体研究：隐藏字体完整字符复核（2026-10-19）
+
+Study仍为0.500，Music／Text文件哈希与上一轮相同，mf、八度、踏板等实谱大小校准保持；本轮无需重装字体、MCP或skill。
+
+已读57份PDF中269个隐藏字体组的全部4,273对象，审视2,232个不同字体句柄／字符串／方向代表，所有实际源字符键均有代表。旧索引漏掉的129个组／码位键已补扫，包括被误当空白的控制编码普通字母。500项未显示对象分别为450个页外对象、50个经原页隔离整页2倍／局部32倍确认无墨迹的对象，同页36个可见对照正常；不能把页外对象理解为字体无字形。原件SHA保持，PDF未保存。详见[隐藏字体复核及具体例子](../../../mcp-musescore/fonts/kumo-engrave/HIDDEN_FONT_COVERAGE.md)。
+
+13个音乐角色组均已有字形，其余为普通文字或无可见对象；未发现新的音乐角色。下一步修正全目录实际源字符索引，保留旧材料，在新目录检查其它字体是否也有控制编码漏项。全目标尚未宣告完成，未处理部分继续保留Leland。提交定位 `Freddd13/mcp-musescore@ac8e639`（codex/musescore-evolution）；本体仓库仅追加说明，软件代码及个人版本保持。
+
+
+## 字体参考谱源字符清点与大小保护（2026-10-19）
+
+字体研究工具已改为按实际PDF源字符清点，保留控制码、空格和U+0000，排除提取器自动生成字符。全部146份／1,135页重扫；补入595个逐PDF键、6,813个源位置。音乐候选为已有括号、叉形符头和速度等号；72个空对象原页隔离确认为无墨迹，全部17个可见U+0000对象另行看图。范围、限制和复查方法见[源字符清点](../../../mcp-musescore/fonts/kumo-engrave/SOURCE_CHARACTER_INVENTORY.md)。
+
+生产字体仍Kumo Score Study 0.500，本轮两份OTF哈希与上轮完全一致，已修复的mf／八度／踏板实际大小保持。无需更新字体包或重装MCP／skill。后续仍用同宿主、同谱距、原字号与完整上下文检查实际尺寸，不能以放大字形图代替，也不通过调整用户原谱字号掩盖字体缩小。原PDF／MSCZ只读。
+
+项目提交`Freddd13/mcp-musescore@474922c`；本体仅同步用户说明，不改软件代码、个人版本0.71或已安装程序。全目录每个同码异形与所有出现的语义尚未分别认证，不将清点完成写成字体全部完成。
+
+
+## 字体全目录逐PDF键覆盖（2026-10-19）
+
+全部146份参考谱中的5,723个音乐候选字体／编码键已取样。5,606个可见键归入343个已看图代表，16处原页说明区分速度约等于／发音、裸8八度／拍号、内部符尾／普通旗尾及琶音／滑音。104个目标角色均已有Music／Text入口，未制作重复字形。117个无可见取样键的全部544个实际源字符位置已有无墨迹证据。范围、具体位置和工具见[逐PDF键覆盖](../../../mcp-musescore/fonts/kumo-engrave/PER_PDF_KEY_COVERAGE.md)。
+
+与此前隐藏组和U+0000对象核查合并后，全部9,591个非普通文字键已完成无交集分区。下一步具体检查18个含多个原始subset字体名的PDF／家族；当前少量取样尚不能证明每个subset都覆盖，不宣称全目标完成。
+
+生产字体仍为0.500，两份OTF哈希与上轮完全保持，mf、8／8va和踏板大小不变，无需重装字体、MCP或skill。原件只读，未改已安装程序及个人版本0.71。项目提交`Freddd13/mcp-musescore@714f94d`，本体仅追加此用户说明。
+
+
+## Kumo Score Study 0.500：字体交付与实际尺寸（2026-10-19）
+
+所给146份／1,135页官谱的本轮音乐符号制作与覆盖核查完成：112个处理码位，保留完整Leland底库和未处理字形。最终实际资源扫描覆盖422个资源、8,502个资源／编码键；347个可见代表对应105个已有音乐角色，未发现待制作的新角色。使用与范围见 [字体使用说明](../../../mcp-musescore/fonts/kumo-engrave/CURRENT_USAGE.md)、[交付范围](../../../mcp-musescore/fonts/kumo-engrave/FONT_DELIVERY.md) 和 [最终核验](../../../mcp-musescore/fonts/kumo-engrave/DELIVERY_VERIFICATION.md)。完成覆盖不等于恢复原厂完整字体程序或得到用户对全部字形的审美认可。
+
+本机包位于字体项目的 `dist/kumo-score-study-0.500-complete-local.zip`。把 **Kumo Score Study** 和 **Kumo Score Study Text** 两个完整文件夹放入偏好设置的 **Score Fonts** 目录，重启；在乐谱独立副本的 **格式 → 样式 → 乐谱** 同时选择两家族，第一轮取消推荐／自动优化样式，保留原谱距与字号。包内两份OTF／JSON与原0.500一致，已安装者无需重复装；以后退出软件后成对更新并重启即可，无需重装MCP、skill或系统字体。
+
+当前安装程序重新通过21组原生输出、10组力度组合及5类实际大小检查。相同谱距下，mf高度约为Leland Text基线96.14%，8为100.89%，8va为98.48%，Ped.为101.71%，踏板星号为99.54%；避免此前换字体后力度／八度明显缩小。原PDF、MSCZ均只读；试验副本的音乐内容、原字号／谱距和全部归档附件保持。
+
+专用波浪滑音仍需要包含相关接口的个人0.71构建（原生接口提交 `4a4ef1a5e`，标签 `personal-v0.71.0`）。本次实测当前安装EXE仍使用旧版滑音回退；字体可加载不代表该接口可用。已在字体项目 `dist/Evolution-0.71-font-study/` 准备独立、本机预配置的0.71试用构建：**先退出当前Evolution，再双击其中 `Start-Font-Study.cmd`**，打开副本后选择两套Study字体。其实际预配置、字体注册、专用滑音／颤音和整页像素已验证；未替换原安装和用户配置。该独立配置若需MCP桥接，按项目原说明启用；字体本身独立使用。
+
+净书线需要区分短滑音波段和 `tr` 后的水平颤音；同一码位或相似轮廓不能代替音乐语义判断。最终覆盖决定和交付工具定位：`Freddd13/mcp-musescore@05d58cb`（`codex/musescore-evolution`）。本次仅同步本体用户说明，个人软件版本保持0.71，不修改原生代码。
+
+
+## Kumo Score Study 0.500：实谱评审更正（2026-10-19）
+
+用户查看《如果有来生》试用PDF，未感到明显改善；当前0.500的造型与实际使用验收尚未通过，暂不作为完成替换方案推荐。前段的“完成”限于音乐符号覆盖核查。详见 [实谱评审](../../../mcp-musescore/fonts/kumo-engrave/APPEARANCE_REVIEW.md)，定位 `Freddd13/mcp-musescore@7d17ab0`。
+
+同一0.71程序和工程，真实原生Leland为8页，Study为9页。完整保留Leland字形的改名Control也是9页；诊断副本仅把大括号span>4设为4，Control／Study均回到8页，六谱表音乐子树保持。代码对Leland有按名字限制brace跨度的分支；这项兼容问题需要解决，不推荐通过修改用户谱表／括号结构绕过。
+
+此前大小保护的改名Control Text基线不能代表真实原生Leland Text。直接测量原工程的原生输出，八度数字8为1.5773→0.9649sp，仅约61.2%；此前约101%的说法只相对于改名基线，不能表示用户原谱大小保持。mf为2.5852→2.4854sp，约96.1%，这项仍成立。后续必须用真实原字体／原工程核验Music、Text及回退行为，再比较受控的完整音组和版面。
+
+本次只做原件只读诊断、记录评审失败和修正使用建议；生产字体、本体代码、用户原PDF／MSCZ保持，个人软件版本保持0.71。旧试用包保留，其内文档是本次更正前的快照。
