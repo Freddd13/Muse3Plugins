@@ -1,6 +1,6 @@
 """Run native window checks in the existing test runtime."""
 from pathlib import Path
-import os, subprocess, sys
+import os, re, shutil, subprocess, sys
 R=Path(__file__).resolve().parent
 P=R.parent
 H=P.parent/'muse3_dev/MuseScore'
@@ -19,4 +19,10 @@ if os.environ.get('P2_TEST_SPECTRUM'):
 if os.environ.get('P2_FEATURE_GATE_OFF'):
  source=source.replace("# Qt's style loader", "(runtime/'bin/kumo.ini').write_text('[features]\\nenable_exp_feature=false\\n',encoding='ascii')\n# Qt's style loader")
 if sys.argv[1:]:source=source.replace("[str(target), '-o', str(log) + ',txt']",repr(['__TEST_TARGET__']+sys.argv[1:])+" + ['-o', str(log) + ',txt']").replace("'__TEST_TARGET__'",'str(target)')
-raise SystemExit(subprocess.call([sys.executable,'-X','utf8','-c',source,str(B/'mtest/mscore/pluginhost/Release/tst_pluginhost.exe'),str(I),str(OUT)],env=env))
+code=subprocess.call([sys.executable,'-X','utf8','-c',source,str(B/'mtest/mscore/pluginhost/Release/tst_pluginhost.exe'),str(I),str(OUT)],env=env)
+batch=os.environ.get('P2_TEST_BATCH','')
+if batch:
+ if not re.fullmatch(r'[A-Za-z0-9_-]+',batch):raise ValueError('P2_TEST_BATCH must be a file label')
+ log=OUT/'gui.txt'
+ if log.is_file():shutil.copy2(log,R/'out'/f'{batch}-pluginhost.txt')
+raise SystemExit(code)

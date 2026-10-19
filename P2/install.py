@@ -10,6 +10,11 @@ I=H/'msvc.install_repair_current_x64'
 source=H/'msvc.build_harmony_release_x64/main/Release/MuseScore3Evo.exe'
 target=I/'bin/MuseScore3Evo.exe'
 assert source.is_file() and target.is_file()
+# Check the running executable before updating any files in the installation.
+try:
+ with target.open('r+b'):pass
+except PermissionError:
+ raise SystemExit('请先关闭当前 MuseScore 窗口，再更新程序。安装目录尚未更改：'+str(target))
 backup=R/('out/before-'+(H/'personal/VERSION').read_text('utf8').strip()+'/MuseScore3Evo.exe')
 if not backup.exists():
  backup.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(target,backup)
