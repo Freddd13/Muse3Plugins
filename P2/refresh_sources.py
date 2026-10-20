@@ -6,6 +6,9 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="完整谱试写保存",path="mscore/workflow/workflowexpression.cpp",symbol="QVariantMap ScoreObserver::saveWorkflowScore(",line="1",role="保存当前项目副本，更新文件校验及原生已保存状态",tests="mtest/mscore/pluginhost/variant_metadata_076_tests.inc"),
+ dict(topic="插件控件识别",path="mscore/plugin/mscorePlugins.cpp",symbol="static bool personalSupportComponent(",line="1",role="元信息扫描跳过本项目公共界面控件，保留真实插件",tests="mtest/mscore/pluginhost/variant_metadata_076_tests.inc"),
+ dict(topic="完整谱工作区迁移",path="share/plugins/ArrangementVariants/ArrangementVariants_MS3.qml",symbol="function saveAt(url)",line="1",role="另存索引时保持已有材料路径，保存切换与删除恢复",tests="mtest/mscore/pluginhost/variant_metadata_076_tests.inc"),
  dict(topic="谱行带位置与操作",path="mscore/performanceeditor/performanceoverlay.cpp",symbol="QRectF PerformanceEditor::scoreBandLane() const",line="1",role="选中谱行附近的可见位置、固定底部与窄行菜单",tests="mtest/mscore/pluginhost/score_editing_075_tests.inc;mtest/mscore/performanceeditor/performance_controls_tests.inc"),
  dict(topic="最近音滚轮",path="mscore/performanceeditor/performancewheel.cpp",symbol="bool PerformanceEditor::nearestWheelShortcut(",line="1",role="扩展开关、修饰键和最近可编辑音",tests="mtest/mscore/pluginhost/score_editing_075_tests.inc"),
  dict(topic="和弦范围手柄",path="mscore/workflow/chordeditor.cpp",symbol="QPointF pointFor(int tick) const",line="1",role="手柄固定到音乐范围，文字可独立拖动及避让",tests="mtest/mscore/pluginhost/harmony_display_075_tests.inc"),

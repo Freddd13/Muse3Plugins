@@ -34,7 +34,7 @@ def main():
     previous = json.loads(state_file.read_text('utf8')) if state_file.exists() else {}
     pending = [(p, HOST / p.relative_to(ROOT / 'native'))
                for p in (ROOT / 'native').rglob('*') if p.is_file()]
-    for folder in ('HarmonyAssistant', 'PerformanceExpression', 'WorkflowCommon', 'ArrangementAssistant'):
+    for folder in ('HarmonyAssistant', 'PerformanceExpression', 'WorkflowCommon', 'ArrangementAssistant', 'ArrangementVariants'):
         pending += [(p, HOST / 'share/plugins' / folder / p.name)
                     for p in (ROOT.parent / folder).iterdir()
                     if p.is_file() and p.suffix in ('.qml', '.js', '.md')]

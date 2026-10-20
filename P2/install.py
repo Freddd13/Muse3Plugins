@@ -36,7 +36,7 @@ for name,license_name in [('kumo-vst3','LICENSE.txt'),('kumo-vestige','COPYING')
  folder=I/'licenses'/name;folder.mkdir(parents=True,exist_ok=True)
  for leaf in (license_name,'source.json'):copy_changed(H/'thirdparty'/name/leaf,folder/leaf)
 shutil.copy2(source,target)
-for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon','ArrangementAssistant'):
+for folder in ('HarmonyAssistant','PerformanceExpression','WorkflowCommon','ArrangementAssistant','ArrangementVariants'):
  destination=I/'plugins'/folder;destination.mkdir(parents=True,exist_ok=True)
  for p in (R.parent/folder).iterdir():
   if p.name in {'HarmonyAssistant_MS3.qml','HarmonyAssistant.view.qml','PerformanceExpression_MS3.qml','PerformanceExpression.view.qml'}:continue
@@ -71,8 +71,12 @@ for folder in ('HarmonyAssistant','PerformanceExpression','ReferencePlayer'):
 for p in (R/'native/personal').rglob('*'):
  if not p.is_file():continue
  destination=I/'personal'/p.relative_to(R/'native/personal');destination.parent.mkdir(parents=True,exist_ok=True)
- maintained=H/'personal/USER_GUIDE.md' if p.relative_to(R/'native/personal').as_posix()=='USER_GUIDE.md' else p
- shutil.copyfile(maintained,destination)
+ if p.relative_to(R/'native/personal').as_posix()=='USER_GUIDE.md':
+  prepared=subprocess.run(['git','show',':personal/USER_GUIDE.md'],cwd=H,capture_output=True)
+  version=(R/'native/personal/VERSION').read_text('utf8').strip().encode('utf8')
+  data=prepared.stdout if prepared.returncode==0 and b'**'+version+b'**' in prepared.stdout[:1024] else p.read_bytes()
+  destination.write_bytes(data)
+ else:shutil.copyfile(p,destination)
 print('已更新现有程序：',target)
 print('SHA256',hashlib.sha256(target.read_bytes()).hexdigest())
 print('旧入口已备份并整理：',len(retired))

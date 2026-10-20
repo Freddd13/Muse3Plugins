@@ -24,6 +24,14 @@ def main():
         if (HOST / relative).read_bytes() != source.read_bytes():
             raise RuntimeError("源码尚未同步：" + relative)
         files.append(relative)
+    for folder in ("HarmonyAssistant", "PerformanceExpression", "WorkflowCommon", "ArrangementAssistant", "ArrangementVariants"):
+        for source in (ROOT.parent / folder).iterdir():
+            if not source.is_file() or source.suffix not in (".qml", ".js", ".md"):
+                continue
+            relative = "share/plugins/" + folder + "/" + source.name
+            if (HOST / relative).read_bytes() != source.read_bytes():
+                raise RuntimeError("插件尚未同步：" + relative)
+            files.append(relative)
     git(HOST, "add", "--", *files)
     ours = (ROOT / "native/personal/USER_GUIDE.md").read_bytes()
     base = git(ROOT.parent, "show", "HEAD:P2/native/personal/USER_GUIDE.md")
