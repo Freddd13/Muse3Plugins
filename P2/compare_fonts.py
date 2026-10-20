@@ -5,17 +5,22 @@ import json
 import os
 import shutil
 import subprocess
+import re
 
 ROOT = Path(__file__).resolve().parent
 HOST = ROOT.parent.parent / 'muse3_dev/MuseScore'
-OUT = ROOT / 'out/font-comparison-064'
+BATCH = os.environ.get('P2_FONT_BATCH', 'font-comparison-075')
+if not re.fullmatch(r'[A-Za-z0-9_-]+', BATCH):
+    raise ValueError('P2_FONT_BATCH must be a file label')
+OUT = ROOT / 'out' / BATCH
 SOURCE = Path('C:/Users/Fred/OneDrive - yunzd/arr/如果有来生/如果有来生-release5.mscz')
 
 
 def main():
     from pypdf import PdfReader
     source_hash = hashlib.sha256(SOURCE.read_bytes()).hexdigest()
-    stock = OUT / 'stock/layout/MuseScore 3/bin/MuseScore3.exe'
+    OUT.mkdir(parents=True, exist_ok=True)
+    stock = ROOT / 'out/font-comparison-064/stock/layout/MuseScore 3/bin/MuseScore3.exe'
     runtime = ROOT.parent / 'P1/out/final-regression/runtime/bin/MuseScore3Evo.exe'
     shutil.copy2(HOST / 'msvc.build_harmony_release_x64/main/Release/MuseScore3Evo.exe', runtime)
     report = {'score': str(SOURCE), 'sha256': source_hash, 'exports': {}}

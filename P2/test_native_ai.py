@@ -8,12 +8,16 @@ import filecmp
 import subprocess
 import sys
 import time
+import re
 
 ROOT = Path(__file__).resolve().parent
 HOST = ROOT.parent.parent / "muse3_dev/MuseScore"
 REPO = ROOT.parent.parent / "mcp-musescore"
 RUNTIME = ROOT.parent / "P1/out/final-regression/runtime"
-OUT = ROOT / "out/native-ai-063"
+batch = os.environ.get("P2_TEST_BATCH", "native-ai-063")
+if not re.fullmatch(r"[A-Za-z0-9_-]+", batch):
+    raise ValueError("P2_TEST_BATCH must be a file label")
+OUT = ROOT / "out" / batch
 OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(REPO))
 from fastmcp import Client

@@ -6,6 +6,10 @@ H=R.parent.parent/'muse3_dev/MuseScore'
 index=R/'native/personal/docs/source-map.tsv'
 rows=list(csv.DictReader(io.StringIO(index.read_text('utf8')),delimiter='\t'))
 rows += [
+ dict(topic="谱行带位置与操作",path="mscore/performanceeditor/performanceoverlay.cpp",symbol="QRectF PerformanceEditor::scoreBandLane() const",line="1",role="选中谱行附近的可见位置、固定底部与窄行菜单",tests="mtest/mscore/pluginhost/score_editing_075_tests.inc;mtest/mscore/performanceeditor/performance_controls_tests.inc"),
+ dict(topic="最近音滚轮",path="mscore/performanceeditor/performancewheel.cpp",symbol="bool PerformanceEditor::nearestWheelShortcut(",line="1",role="扩展开关、修饰键和最近可编辑音",tests="mtest/mscore/pluginhost/score_editing_075_tests.inc"),
+ dict(topic="和弦范围手柄",path="mscore/workflow/chordeditor.cpp",symbol="QPointF pointFor(int tick) const",line="1",role="手柄固定到音乐范围，文字可独立拖动及避让",tests="mtest/mscore/pluginhost/harmony_display_075_tests.inc"),
+ dict(topic="和弦显示延续",path="share/workflow/panels/HarmonyAssistant/Timeline.js",symbol="function displayAtTick(",line="1",role="保留上一和弦的显示，遵守人工排除范围",tests="../../muse3_plugins/HarmonyAssistant/tests/test-display-result.cjs"),
  dict(topic="分段写法删除",path="libmscore/regionalvariants.cpp",symbol="QVariantMap remove(",line="1",role="删除写法、整组与组合，保留当前谱面并一次撤销",tests="mtest/mscore/p1native/regional_070_tests.inc"),
  dict(topic="谱面按钮位置",path="libmscore/regionalvariants.cpp",symbol="QVariantMap setControlPlacement(",line="1",role="手动位置、单组显隐、随谱保存及撤销",tests="mtest/mscore/p1native/regional_070_tests.inc"),
  dict(topic="分段写法列表操作",path="mscore/workflow/regionalpanel.cpp",symbol="void removeSelected(",line="1",role="单击切换、明确当前写法、删除与恢复入口",tests="mtest/mscore/p1native/regional_070_tests.inc"),
