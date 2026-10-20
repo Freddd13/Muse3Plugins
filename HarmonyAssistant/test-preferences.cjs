@@ -18,3 +18,18 @@ assert.equal(restored.ribbonAlign, 3);
 assert.equal(restored.ribbonPosition, 72);
 assert.equal(prefs.clean({...chosen, avoidScoreContent: 'true'}).avoidScoreContent, false);
 console.log('和弦外观设置：旧配置读取、保存恢复和两个独立开关检查通过。');
+// Panel surfaces retain separate choices, including preferences from older releases.
+const legacy=prefs.defaults();
+for(const key of Object.keys(legacy))if(key.startsWith('detail')||key.startsWith('summary'))delete legacy[key];
+legacy.chordFont=2;legacy.degreeFont='Times New Roman';
+const migrated=prefs.clean(legacy);
+assert.equal(migrated.detailPixels,24);assert.equal(migrated.summaryPixels,20);
+assert.equal(migrated.detailFont,2);assert.equal(migrated.summaryFont,2);
+assert.equal(migrated.detailDegreeFont,'Times New Roman');
+const panelStyle=prefs.clean({...migrated,detailPixels:30,detailOrder:2,detailGap:4,detailContent:1,detailColor:'#102030'});
+assert.equal(panelStyle.summaryPixels,20);assert.equal(panelStyle.chordScale,100);
+assert.equal(panelStyle.summaryOrder,0);assert.equal(panelStyle.chordOrder,0);
+assert.equal(prefs.clean(JSON.parse(JSON.stringify(panelStyle))).detailColor,'#102030');
+assert.equal(prefs.clean({...panelStyle,summaryPixels:100}).summaryPixels,32);
+assert.equal(prefs.clean({...panelStyle,detailPixels:100}).detailPixels,40);
+console.log('摘要、详情、谱面独立设置和旧样式读取检查通过。');
