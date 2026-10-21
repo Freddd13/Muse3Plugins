@@ -60,6 +60,7 @@ rows += [
 rows += [
  dict(topic='频谱时间范围',path='mscore/performanceeditor/spectrumpane.cpp',symbol='void SpectrumPane::fitTimeRange(',line='1',role='完整音频与按谱片段、匹配显示、逐音轨选择保存',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
  dict(topic='共同时间缩放',path='mscore/performanceeditor/performanceinteraction.cpp',symbol='void PerformanceEditor::zoomTimeline(',line='1',role='卷帘和频谱共用缩放中心与时间滚动范围',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
+ dict(topic='原曲时间叠加缩放',path='mscore/performanceeditor/spectrumpane.cpp',symbol='void SpectrumPane::editorTimelineZoomed(',line='1',role='全曲、选区、参数区与卷帘共用叠加缩放，保留浏览时刻',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
 ]
 rows += [
  dict(topic='独立工具与当前页',path='mscore/workflow/editorareas.cpp',symbol='void keepInlinePage(',line='1',role='唤回独立工具时保留当前编辑器页，恢复导航和时间滚动',tests='mtest/mscore/pluginhost/layout_079_tests.inc'),
