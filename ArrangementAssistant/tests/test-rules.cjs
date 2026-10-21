@@ -3,12 +3,12 @@ function read(file,context={}) {vm.createContext(context);vm.runInContext(fs.rea
 const h=read('../../HarmonyAssistant/Harmony.js'),t=read('../../HarmonyAssistant/Timeline.js',{Harmony:h}),r=read('../Rules.js',{Harmony:h,Timeline:t});
 let passed=0;
 function test(name,body){body();passed++;console.log('PASS '+name);}
-function note(pitch,tick=0,end=960,track=0,tpc){return {id:`${tick}:${track}:${pitch}`,pitch,tick,attackTick:tick,end,logicalEnd:end,track,index:0,tpc:tpc===undefined?({0:14,1:21,2:16,3:9,4:18,5:13,6:20,7:15,8:8,9:17,10:12,11:19})[pitch%12]:tpc,measure:1,beat:1+tick/480,onSeconds:tick/960,endSeconds:end/960};}
+function note(pitch,tick=0,end=960,track=0,tpc){return {id:`${tick}:${track}:${pitch}`,pitch,tick,attackTick:tick,end,logicalEnd:end,track,index:0,tpc:tpc===undefined?({0:14,1:21,2:16,3:11,4:18,5:13,6:20,7:15,8:10,9:17,10:12,11:19})[pitch%12]:tpc,measure:1,beat:1+tick/480,onSeconds:tick/960,endSeconds:end/960};}
 function data(notes,pedals=[]){return {notes,pedals,hands:[],harmonies:[],meters:[{tick:0,end:7680,measure:1,denominator:4}],scope:{start:0,end:7680,firstTrack:0,endTrack:8}};}
 function check(notes,config=r.defaults(),pedals=[]){return r.run(data(notes,pedals),config).issues;}
 function codes(issues){return issues.map(i=>i.code);}
 test('read-only same-pitch voices retained',()=>{let d=data([note(60,0,480,0),note(60,0,480,4)]),before=JSON.stringify(d),state=r.run(d,r.defaults());assert.equal(state.roles.length,2);assert.equal(JSON.stringify(d),before);});
-test('spelled pure fifth to diminished fifth is not parallel',()=>{let ns=[note(60,0,480,4),note(67,0,480,0),note(62,480,960,4),note(68,480,960,0,8)];assert(!codes(check(ns)).includes('parallel-5'));});
+test('spelled pure fifth to diminished fifth is not parallel',()=>{let ns=[note(60,0,480,4),note(67,0,480,0),note(62,480,960,4),note(68,480,960,0,10)];assert(!codes(check(ns)).includes('parallel-5'));});
 test('parallel fifth in either track order',()=>{let ns=[note(60,0,480,4),note(67,0,480,0),note(62,480,960,4),note(69,480,960,0)];assert(codes(check(ns)).includes('parallel-5'));});
 test('contrary motion does not create parallels',()=>{let ns=[note(60,0,480,4),note(67,0,480,0),note(58,480,960,4),note(69,480,960,0)];assert(!codes(check(ns)).some(c=>/^parallel/.test(c)));});
 test('polyphonic automatic voice is uncertain',()=>{let state=r.run(data([note(60),note(64),note(67)]),r.defaults());assert(state.roles[0].uncertain);assert(!state.roles[0].independent);});
@@ -65,5 +65,27 @@ test('certain attacks are checked while another hand remains uncertain',()=>{
  const native=read('../Rules.js',{Harmony:h,Timeline:t,PianoHands:{analyse:()=>({sides:[],possible:false,uncertain:true})}});
  let c=native.defaults();c.roles={'0':{hand:'right'}};let s=native.run(data([note(60),note(84),note(40,0,960,4)]),c);
  assert(s.issues.some(i=>i.code==='span-right'));
+});
+
+test('chosen melodic lines participate in counterpoint inside chords',()=>{
+ let c=r.defaults();c.roles={'0':{role:'melody',line:'top'},'4':{role:'bass',line:'bottom'}};
+ let ns=[note(64,0,480,0),note(67,0,480,0),note(60,0,480,4),note(62,0,480,4),note(66,480,960,0),note(69,480,960,0),note(62,480,960,4),note(64,480,960,4)];
+ const state=r.run(data(ns),c);
+ assert(state.roles.every(role=>role.independent),'the chosen lines must be checked');
+ assert(codes(state.issues).includes('parallel-5'));
+ c.roles['4'].independent=false;
+ assert(!codes(check(ns,c)).includes('parallel-5'),'an explicit doubling choice remains in force');
+});
+test('one low physical interval has one explanation across doubled voices',()=>{
+ const ns=[note(36,0,960,0),note(37,0,960,0),note(36,0,960,4),note(37,0,960,4)];
+ const issue=check(ns).find(i=>i.code==='low-cluster');assert(issue);
+ assert.equal((issue.basis.match(/小二度/g)||[]).length,1);
+ assert.equal(issue.notes.length,4,'all score notes remain available for highlighting');
+});
+
+test('enharmonic augmented sevenths are not written octaves',()=>{
+ const c=r.defaults();c.roles={'0':{role:'melody'},'4':{role:'bass'}};
+ const ns=[note(60,0,480,4),note(72,0,480,0,26),note(62,480,960,4),note(74,480,960,0,28)];
+ assert.equal(r.perfect(ns[0],ns[1]),0);assert(!codes(check(ns,c)).includes('parallel-8'));
 });
 console.log(`${passed} rule tests passed`);

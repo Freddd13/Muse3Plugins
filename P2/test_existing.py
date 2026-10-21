@@ -17,7 +17,7 @@ if slots:
 summary=R/('out/'+batch+'-existing.json')
 results=json.loads(summary.read_text('utf8')) if summary.exists() else {}
 for name in (sys.argv[1:] or ('p1native','performanceeditor')):
- if name not in ('p1native','performanceeditor','nativeui'):raise ValueError(name)
+ if name not in ('p0native','p1native','performanceeditor','nativeui'):raise ValueError(name)
  log=R/('out/'+batch+'-'+name+'-run.txt')
  # The normal-window suite uses the same renderer as the released application.
  test_source=source.replace("QT_QUICK_BACKEND='software'", "QT_QUICK_BACKEND=''") if name=='nativeui' else source
