@@ -59,6 +59,10 @@ rows += [
 ]
 rows += [
  dict(topic='频谱时间范围',path='mscore/performanceeditor/spectrumpane.cpp',symbol='void SpectrumPane::fitTimeRange(',line='1',role='完整音频与按谱片段、匹配显示、逐音轨选择保存',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
+ dict(topic='圆滑线共同参考曲线',path='libmscore/freeslur.cpp',symbol='std::array<QPointF,4> SlurSegment::freeBaseControls(',line='1',role='中间节点点位、锁定与整理共用参考坐标',tests='mtest/mscore/performanceeditor/engraving_085_tests.inc'),
+ dict(topic='圆滑线切线整理',path='libmscore/freeslur.cpp',symbol='bool FreeSlur::smoothNode(',line='1',role='保持可见节点，按邻点间距整理切线',tests='mtest/mscore/performanceeditor/engraving_085_tests.inc'),
+ dict(topic='圆滑线连续绕行',path='libmscore/freeslurrouting.cpp',symbol='RoutingCandidate smoothRouting(',line='1',role='比较整段形状、避让边界与共同切线，固定人工节点',tests='mtest/mscore/performanceeditor/engraving_085_tests.inc'),
+ dict(topic='圆滑线独立端点',path='libmscore/freeslurendpoints.cpp',symbol='std::array<QPointF,4> SlurSegment::freeDrawingControls(',line='1',role='复用原生符干和符杠端点，独立保存位置和切线',tests='mtest/mscore/performanceeditor/endpoints_085_tests.inc'),
  dict(topic='共同时间缩放',path='mscore/performanceeditor/performanceinteraction.cpp',symbol='void PerformanceEditor::zoomTimeline(',line='1',role='卷帘和频谱共用缩放中心与时间滚动范围',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
  dict(topic='原曲时间叠加缩放',path='mscore/performanceeditor/spectrumpane.cpp',symbol='void SpectrumPane::editorTimelineZoomed(',line='1',role='全曲、选区、参数区与卷帘共用叠加缩放，保留浏览时刻',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
 ]
