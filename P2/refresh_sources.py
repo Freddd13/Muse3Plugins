@@ -74,6 +74,11 @@ rows += [
  dict(topic='工具内容高度',path='mscore/workflow/editorareas.cpp',symbol='void ensureEditorDockContent(',line='1',role='根据当前内容补足最小空间，保留用户调整的较大编辑器',tests='mtest/mscore/pluginhost/layout_079_tests.inc'),
  dict(topic='工作视图初始显示',path='mscore/workflow/workspaceviews.cpp',symbol='void activate(',line='1',role='首次雕版与DAW收起输入工具，保存布局继续恢复',tests='mtest/mscore/pluginhost/layout_079_tests.inc'),
 ]
+rows += [
+ dict(topic='导出音长的撤销',path='mscore/midicrop/gatehistory.cpp',symbol='void MidiCropPanel::changeRelease(',line='1',role='每份谱独立记录松手和排除，一次手势一次撤销，保留乐谱撤销',tests='mtest/mscore/performanceeditor/midi_gate_086_tests.inc'),
+ dict(topic='导出音长对比',path='mscore/midicrop/midicroppanel.cpp',symbol='void MidiCropPanel::compare()',line='1',role='紧凑分组、可调图表与列表、共同试听和返回导出',tests='mtest/mscore/performanceeditor/midi_gate_086_tests.inc;mtest/mscore/performanceeditor/midi_transport_086_tests.inc'),
+ dict(topic='导出音长图表',path='mscore/midicrop/gateroll.inc',symbol='class GateRoll final',line='1',role='原新长度、折叠音高、通道踏板、缩放和当前时间定位',tests='mtest/mscore/performanceeditor/midi_gate_086_tests.inc'),
+]
 seen=set();result=[]
 for row in rows:
  key=(row['path'],row['symbol'])
