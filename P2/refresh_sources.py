@@ -57,6 +57,10 @@ rows += [
  dict(topic='扒谱交互',path='mscore/performanceeditor/spectrumpane.cpp',symbol='SpectrumPane::SpectrumPane(',line='1',role='原曲片段、取音、音符输入、上下与叠加',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
  dict(topic='扒谱标注保存',path='mscore/performanceeditor/spectrumpane.cpp',symbol='void SpectrumPane::saveMarks(',line='1',role='频率与音名、原生撤销、MSCZ 元数据',tests='mtest/mscore/pluginhost/tst_pluginhost.cpp'),
 ]
+rows += [
+ dict(topic='频谱时间范围',path='mscore/performanceeditor/spectrumpane.cpp',symbol='void SpectrumPane::fitTimeRange(',line='1',role='完整音频与按谱片段、匹配显示、逐音轨选择保存',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
+ dict(topic='共同时间缩放',path='mscore/performanceeditor/performanceinteraction.cpp',symbol='void PerformanceEditor::zoomTimeline(',line='1',role='卷帘和频谱共用缩放中心与时间滚动范围',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
+]
 seen=set();result=[]
 for row in rows:
  key=(row['path'],row['symbol'])
