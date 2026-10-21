@@ -19,8 +19,10 @@ results=json.loads(summary.read_text('utf8')) if summary.exists() else {}
 for name in (sys.argv[1:] or ('p1native','performanceeditor')):
  if name not in ('p1native','performanceeditor','nativeui'):raise ValueError(name)
  log=R/('out/'+batch+'-'+name+'-run.txt')
+ # The normal-window suite uses the same renderer as the released application.
+ test_source=source.replace("QT_QUICK_BACKEND='software'", "QT_QUICK_BACKEND=''") if name=='nativeui' else source
  with log.open('wb') as stream:
-  code=subprocess.call([sys.executable,'-X','utf8','-c',source,str(B/('mtest/mscore/'+name+'/Release/tst_'+name+'.exe')),str(I),str(OUT)],env=env,stdout=stream,stderr=subprocess.STDOUT)
+  code=subprocess.call([sys.executable,'-X','utf8','-c',test_source,str(B/('mtest/mscore/'+name+'/Release/tst_'+name+'.exe')),str(I),str(OUT)],env=env,stdout=stream,stderr=subprocess.STDOUT)
  content=log.read_text('utf8',errors='replace');counts=re.search(r'Totals: (\d+) passed, (\d+) failed, (\d+) skipped',content)
  results[name]={'exit':code,'counts':list(counts.groups()) if counts else None}
  print(name,results[name],flush=True)
