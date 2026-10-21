@@ -61,6 +61,12 @@ rows += [
  dict(topic='频谱时间范围',path='mscore/performanceeditor/spectrumpane.cpp',symbol='void SpectrumPane::fitTimeRange(',line='1',role='完整音频与按谱片段、匹配显示、逐音轨选择保存',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
  dict(topic='共同时间缩放',path='mscore/performanceeditor/performanceinteraction.cpp',symbol='void PerformanceEditor::zoomTimeline(',line='1',role='卷帘和频谱共用缩放中心与时间滚动范围',tests='mtest/mscore/pluginhost/spectrum_078_tests.inc'),
 ]
+rows += [
+ dict(topic='独立工具与当前页',path='mscore/workflow/editorareas.cpp',symbol='void keepInlinePage(',line='1',role='唤回独立工具时保留当前编辑器页，恢复导航和时间滚动',tests='mtest/mscore/pluginhost/layout_079_tests.inc'),
+ dict(topic='写节奏紧凑操作',path='mscore/performanceeditor/rhythmpane.cpp',symbol='RhythmPane::RhythmPane(',line='1',role='录制、细分、试听与采用按自然宽度排列及换行',tests='mtest/mscore/pluginhost/layout_079_tests.inc'),
+ dict(topic='工具内容高度',path='mscore/workflow/editorareas.cpp',symbol='void ensureEditorDockContent(',line='1',role='根据当前内容补足最小空间，保留用户调整的较大编辑器',tests='mtest/mscore/pluginhost/layout_079_tests.inc'),
+ dict(topic='工作视图初始显示',path='mscore/workflow/workspaceviews.cpp',symbol='void activate(',line='1',role='首次雕版与DAW收起输入工具，保存布局继续恢复',tests='mtest/mscore/pluginhost/layout_079_tests.inc'),
+]
 seen=set();result=[]
 for row in rows:
  key=(row['path'],row['symbol'])
