@@ -16,7 +16,7 @@ if slots:
 summary=R/('out/'+batch+'-existing.json')
 results=json.loads(summary.read_text('utf8')) if summary.exists() else {}
 for name in (sys.argv[1:] or ('p1native','performanceeditor')):
- if name not in ('p1native','performanceeditor'):raise ValueError(name)
+ if name not in ('p1native','performanceeditor','nativeui'):raise ValueError(name)
  log=R/('out/'+batch+'-'+name+'-run.txt')
  with log.open('wb') as stream:
   code=subprocess.call([sys.executable,'-X','utf8','-c',source,str(B/('mtest/mscore/'+name+'/Release/tst_'+name+'.exe')),str(I),str(OUT)],env=env,stdout=stream,stderr=subprocess.STDOUT)
