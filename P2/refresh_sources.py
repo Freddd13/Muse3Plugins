@@ -79,6 +79,12 @@ rows += [
  dict(topic='导出音长对比',path='mscore/midicrop/midicroppanel.cpp',symbol='void MidiCropPanel::compare()',line='1',role='紧凑分组、可调图表与列表、共同试听和返回导出',tests='mtest/mscore/performanceeditor/midi_gate_086_tests.inc;mtest/mscore/performanceeditor/midi_transport_086_tests.inc'),
  dict(topic='导出音长图表',path='mscore/midicrop/gateroll.inc',symbol='class GateRoll final',line='1',role='原新长度、折叠音高、通道踏板、缩放和当前时间定位',tests='mtest/mscore/performanceeditor/midi_gate_086_tests.inc'),
 ]
+rows += [
+ dict(topic='节奏草稿连续采用',path='mscore/performanceeditor/rhythmpane.cpp',symbol='void RhythmPane::operate(',line='1',role='采用后重新读取、等待计算后执行、试听状态与原生撤销',tests='mtest/mscore/performanceeditor/writing_087_tests.inc'),
+ dict(topic='节奏草稿局部撤销',path='mscore/performanceeditor/rhythmpane.cpp',symbol='void RhythmPane::commitRows(',line='1',role='一次拖动或表格编辑一次撤销，恢复草稿及采用状态',tests='mtest/mscore/performanceeditor/writing_087_tests.inc'),
+ dict(topic='节奏的逐音保持',path='share/plugins/PerformanceExpression/Rhythm.js',symbol='function voiceEvents(',line='1',role='保留休止、各音延音与力度，按交叠区间写延音和休止',tests='mtest/mscore/performanceeditor/writing_087_tests.inc;../../muse3_plugins/PerformanceExpression/tests/test-rhythm-preservation.cjs'),
+ dict(topic='卷帘草稿删除',path='mscore/performanceeditor/rollwritingmodel.cpp',symbol='void RollWritingBar::discardDraft(',line='1',role='只删除当前范围的草稿，原生撤销及保存恢复',tests='mtest/mscore/performanceeditor/writing_087_tests.inc'),
+]
 seen=set();result=[]
 for row in rows:
  key=(row['path'],row['symbol'])
