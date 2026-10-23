@@ -29,7 +29,7 @@ let poly=notes.concat([Object.assign({},notes[2],{id:"s2b",logicalId:"s2b",track
 r=ctx.align({notes:poly,performance:performance.concat([{id:"m2b",pitch:64,seconds:1.043,velocity:78}])});assert(r.matches.some(m=>m.scoreId==="s2b"));assert(!r.matches.some(m=>m.scoreId==="tie"));
 let protectedResult=ctx.align({notes:notes.map(n=>Object.assign({},n,{protected:n.id==="s3"})),performance});
 let c=ctx.candidates({result:protectedResult,notes,revision:"1",scope:{start:0,end:3840},config:{strength:50,velocity:true,rubato:true,keepDuration:true}});
-assert.strictEqual(c.velocity.length,7);assert(c.kept.some(n=>n.id==="s3"));assert(c.tempos.length>2);assert(c.tempos.every(n=>n.bpm>=5&&n.bpm<=999));assert.strictEqual(c.tempos[0].bpm,120);assert.strictEqual(c.tempos[c.tempos.length-1].bpm,120);
+assert.strictEqual(c.velocity.length,7);assert(c.kept.some(n=>n.id==="s3"));assert.strictEqual(c.tempos.length,0); // Uniform time scaling vanishes when the original duration is retained.
 c=ctx.candidates({result:protectedResult,notes,scope:{start:0,end:3840},config:{velocity:true,keepManual:false}});
 assert.strictEqual(c.velocity.length,8);assert(c.velocity.find(n=>n.id==='s3').unlock);
 c=ctx.candidates({result:protectedResult,config:{strength:0,velocity:true}});assert(c.velocity.every(n=>n.target===80));
@@ -41,8 +41,9 @@ console.log("Alignment truth fixtures, corrections, polyphony, tie and protected
 const expressive=performance.map((n,i)=>Object.assign({},n,{seconds:[0,.48,1.01,1.55,2.1,2.69,3.27,3.95][i]}));
 let er=ctx.align({notes,performance:expressive});er.matches.forEach(m=>m.confirmed=true);
 let rub=ctx.candidates({result:er,notes,scope:{start:0,end:3840},config:{velocity:false,rubato:true,keepDuration:true,strength:50}});
-let dt=0;for(let i=1;i<rub.tempos.length;++i)dt+=(rub.tempos[i].tick-rub.tempos[i-1].tick)/480*60/rub.tempos[i-1].bpm;assert(Math.abs(dt-3.5)<1e-8);
-let relNotes=notes.map(n=>Object.assign({},n,{onSeconds:n.onSeconds*2,scoreSeconds:n.onSeconds}));let rel=ctx.align({notes:relNotes,performance:expressive});rel.matches.forEach(m=>m.confirmed=true);let rc=ctx.candidates({result:rel,config:{rubato:true,keepDuration:true}});assert(Math.abs(rc.tempos[2].bpm-rub.tempos[2].bpm)<1e-8);
+function writtenSeconds(points,end){let at=0,bpm=120,seconds=0;for(const p of points.slice().sort((a,b)=>a.tick-b.tick)){if(p.tick>end)break;seconds+=(p.tick-at)/480*60/bpm;at=p.tick;bpm=p.bpm;}return seconds+(end-at)/480*60/bpm;}
+assert(Math.abs(writtenSeconds(rub.tempos,3840)-4)<1e-8);
+let relNotes=notes.map(n=>Object.assign({},n,{onSeconds:n.onSeconds*2,scoreSeconds:n.onSeconds}));let rel=ctx.align({notes:relNotes,performance:expressive});rel.matches.forEach(m=>m.confirmed=true);let rc=ctx.candidates({result:rel,scope:{start:0,end:3840},config:{rubato:true,keepDuration:true}});assert.deepStrictEqual(JSON.parse(JSON.stringify(rc.tempos)),JSON.parse(JSON.stringify(rub.tempos)));
 const eight=notes.map((n,i)=>Object.assign({},n,{tick:i*240}));assert.strictEqual(ctx.align({notes:eight,performance}).matches.length,8);
 const triplet=notes.map((n,i)=>Object.assign({},n,{tick:i*160}));assert.strictEqual(ctx.align({notes:triplet,performance}).matches.length,8);
 console.log("Written rubato duration, independent transport clock, compound subdivisions passed.");
