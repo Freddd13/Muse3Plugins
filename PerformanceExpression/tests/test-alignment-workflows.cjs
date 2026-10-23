@@ -102,7 +102,34 @@ const trillPerformance = trill.filter((n, i) => ![3, 4, 5].includes(i)).map(n =>
 const rapid = checked('missing attacks in a fast alternating figure', trill, trillPerformance);
 assert(rapid.pending > 0);
 const empty = rules.align({notes: [], performance: first});assert.equal(empty.matches.length, 0);
+const disconnected = rules.align({notes: repeatedNotes, performance: first,
+    links: [{scoreId: 's1-2', midiId: 'ms2-2', disabled: true}]});
+assert(disconnected.matches.some(m => m.scoreId === 's2-2' && m.midiId === 'ms2-2'));
+assert(!disconnected.matches.some(m => m.scoreId === 's1-2'));
+const outside = rules.align({notes: repeatedNotes, performance: first.concat(second), passageChoice: otherIndex,
+    links: [{scoreId: 's1-2', midiId: 'second-ms1-2'}]});
+assert(outside.matches.some(m => m.scoreId === 's1-2' && m.midiId === 'second-ms1-2' && m.confirmed));
+const longRoll = fixture();
+longRoll.performance = longRoll.performance.map(n => ({...n, seconds: n.seconds * 2 + Number(n.truth.slice(-1)) * .105}));
+const longMiddle = longRoll.notes.filter(n => n.tick >= 48 * 240 && n.tick < 80 * 240);
+for (const [name, options, expected] of [
+    ['selected', {}, 96], ['whole', {}, 480],
+    ['anchored', {anchors: [{scoreId: 's64-0', midiId: 'ms64-0'}]}, 96],
+    ['melody', {role: 1}, 32], ['bass', {role: 2, track: 4}, 32], ['upper staff', {role: 2, track: 0}, 64]
+]) {
+    const rolled = checked('210 ms rolled chord: ' + name, name === 'whole' ? longRoll.notes : longMiddle,
+        longRoll.performance, options, expected);
+    assert.equal(rolled.pending, 0);
+}
 const melody = f.notes.filter(n => n.track === 0 && n.index === 1 && n.tick >= 48 * 240 && n.tick < 80 * 240);
+const overlappingRoll = fixture(.105);
+for (const [name, options, expected] of [['all', {}, 96], ['melody', {role: 1}, 32],
+    ['bass', {role: 2, track: 4}, 32], ['upper', {role: 2, track: 0}, 64]]) {
+    const r = checked('roll ending beside the next bass: ' + name,
+        overlappingRoll.notes.filter(n => n.tick >= 64 * 240 && n.tick < 96 * 240),
+        overlappingRoll.performance, options, expected);
+    assert.equal(r.pending, 0);
+}
 const taps = f.performance.filter(n => n.truth.endsWith('-2')).map(n => ({...n, pitch: 40}));
 const tapping = checked('uniform arbitrary-pitch tapping needs a passage choice', melody, taps, {mode: 'tap'});
 assert.equal(tapping.pending, tapping.matches.length);
@@ -110,6 +137,6 @@ assert.equal(rules.candidates({result: tapping, config: settings.defaults()}).ve
 assert.equal(settings.defaults().velocityStrength, 100);
 assert.equal(settings.restored({strength: 65}).velocityStrength, 65);
 assert.equal(settings.restored({strength: 65}).velocityWriteMode, 'preserve');
-fs.mkdirSync('P2/out/expression-095', {recursive: true});
-fs.writeFileSync('P2/out/expression-095/workflows.json', JSON.stringify(reports, null, 2));
+fs.mkdirSync('P2/out/expression-096', {recursive: true});
+fs.writeFileSync('P2/out/expression-096/workflows.json', JSON.stringify(reports, null, 2));
 console.log(reports.length + ' alignment workflows passed.');

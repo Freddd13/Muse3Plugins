@@ -23,6 +23,10 @@ test('uncertain matches explain what needs attention',()=>{
  const r={matches:[{...matches[1],uncertainty:explanation}]};
  assert.equal(rules.build(r,{},candidate,1)[0].detail,explanation);
 });
+test('wrong notes show the performed pitch',()=>{
+ const r={matches:[{...matches[1],performedPitch:64}]};
+ assert(rules.build(r,{},candidate,1)[0].detail.includes('演奏 E4'));
+});
 test('adopting part of a chord removes only that physical note',()=>{
  const progress={velocity:{'0:0::0':true}};
  assert.equal(rules.build(result,progress,candidate,0)[0].note.id,b.id);
@@ -40,5 +44,6 @@ test('protected results explain the retained value',()=>{
 });
 test('enharmonic spelling keeps the written octave',()=>{
  assert.equal(rules.pitchName(60,26),'B♯3');assert.equal(rules.pitchName(59,7),'C♭4');
+ assert.equal(rules.pitchName(51,-1),'F♭♭3');
 });
 console.log(count+' result-list checks passed');
