@@ -18,6 +18,11 @@ test('pending filter keeps uncertain pairs until checked',()=>{
  assert.equal(rules.build(result,{},candidate,1).length,1);
  const fixed={matches:[{...matches[1],confirmed:true}]};assert.equal(rules.build(fixed,{},candidate,1).length,0);
 });
+test('uncertain matches explain what needs attention',()=>{
+ const explanation='附近弹了几次同音，请选择这个谱音对应的那一次。';
+ const r={matches:[{...matches[1],uncertainty:explanation}]};
+ assert.equal(rules.build(r,{},candidate,1)[0].detail,explanation);
+});
 test('adopting part of a chord removes only that physical note',()=>{
  const progress={velocity:{'0:0::0':true}};
  assert.equal(rules.build(result,progress,candidate,0)[0].note.id,b.id);

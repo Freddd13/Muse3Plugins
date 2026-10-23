@@ -34,7 +34,7 @@ c=ctx.candidates({result:protectedResult,notes,scope:{start:0,end:3840},config:{
 assert.strictEqual(c.velocity.length,8);assert(c.velocity.find(n=>n.id==='s3').unlock);
 c=ctx.candidates({result:protectedResult,config:{strength:0,velocity:true}});assert(c.velocity.every(n=>n.target===80));
 const repeated=ctx.align({notes,performance:performance.concat(performance.map(n=>Object.assign({},n,{id:"second"+n.id,seconds:n.seconds+5}))),repeats:[{tick:0,end:3840,utick:0},{tick:0,end:3840,utick:3840}],occurrence:0});assert.strictEqual(repeated.matches.length,16);assert(repeated.matches.some(m=>m.scoreId==="s0@2"));
-const cached=ctx.align({notes,performance,cacheKey:"stable"});const reused=ctx.align({notes,performance,cacheKey:"stable",previousKey:"stable",segments:cached.segments,links:[{scoreId:"s3",midiId:"m3"}]});assert.strictEqual(reused.matches.length,8);
+const cached=ctx.align({notes,performance,cacheKey:"stable"});const reused=ctx.align({notes,performance,cacheKey:"stable",previousKey:cached.cacheKey,segments:cached.segments,links:[{scoreId:"s3",midiId:"m3"}]});assert.strictEqual(reused.matches.length,8);assert.strictEqual(reused.segments[Object.keys(cached.segments)[0]],cached.segments[Object.keys(cached.segments)[0]]);
 fs.mkdirSync("P1/out/expression",{recursive:true});fs.writeFileSync("P1/out/expression/alignment.json",JSON.stringify(reports,null,2));
 console.log("Alignment truth fixtures, corrections, polyphony, tie and protected candidates passed.");
 
