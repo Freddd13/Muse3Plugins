@@ -90,6 +90,12 @@ rows += [
  dict(topic='浮动插件参数',path='mscore/workflow/vstparameters.cpp',symbol='class ParameterWindow final',line='1',role='按实际插件身份跟随排序，输入、拖动与原生撤销同步',tests='mtest/mscore/pluginhost/vst_088_tests.inc'),
  dict(topic='音源和效果预设',path='mscore/workflow/vstpresets.cpp',symbol='QByteArray readVstPreset(',line='1',role='读写带插件身份的预设，继续读取已有格式',tests='mtest/mscore/pluginhost/vst_088_tests.inc'),
 ]
+rows += [
+ dict(topic='组合面板空间',path='mscore/mixer/mixer.cpp',symbol='if (personalFeaturesEnabled())',line='1',role='混音器按需滚动，移除新增整行按钮后保留原控制内容',tests='mtest/mscore/pluginhost/layout_089_tests.inc'),
+ dict(topic='编辑器标签组尺寸',path='mscore/workflow/workspaceviews.cpp',symbol='void restoreEditorExtent(',line='1',role='保存可见标签组，恢复工作视图时计入标签栏尺寸，保留内部比例',tests='mtest/mscore/pluginhost/layout_089_tests.inc'),
+ dict(topic='个人工具图标',path='mscore/workflow/workspaceviews.cpp',symbol='QIcon personalToolIcon(',line='1',role='按工具用途绘制图标，菜单、工具栏与工具页共用',tests='mtest/mscore/pluginhost/layout_089_tests.inc'),
+ dict(topic='主题刷新图标',path='mscore/shortcut.cpp',symbol='void Shortcut::refreshIcons()',line='1',role='动作创建与主题刷新使用各工具自己的图标',tests='mtest/mscore/pluginhost/layout_089_tests.inc'),
+]
 seen=set();result=[]
 for row in rows:
  key=(row['path'],row['symbol'])
