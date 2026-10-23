@@ -4,6 +4,8 @@
 
 从[当前进度与后续完整计划](../P2/native/personal/docs/REWORK_PROGRESS.md)查看本轮结果、全部33项的剩余工作，以及A—F的固定执行顺序。下一批为A：共同窗口、日常编辑与写法保存。
 
+本次[音源面板、换谱与踏板补充安排](../P2/native/personal/docs/SOUND_PEDAL_PLAN.md)分别加入A1、A4与B5。包括混音器占位、共用／独立／保留音源、SF2／钢琴换踏板及编辑器端点操作。
+
 日常使用从[用户说明](../../muse3_dev/MuseScore/personal/USER_GUIDE.md)开始。较早的0.53—0.57调整、截图和检查结果保留在[逐项说明](../Repairs/docs/REPAIR_053_057_DELIVERY.md)。
 
 各次修复、具体操作和图片见[完整使用检查与返工记录](USABILITY_REWORK_20261019.md)。P0／P1／P2和[工作区、DAW与Codex连接](WORKSPACE_IMPLEMENTATION.md)保留各阶段的实现记录。
