@@ -85,6 +85,11 @@ rows += [
  dict(topic='节奏的逐音保持',path='share/plugins/PerformanceExpression/Rhythm.js',symbol='function voiceEvents(',line='1',role='保留休止、各音延音与力度，按交叠区间写延音和休止',tests='mtest/mscore/performanceeditor/writing_087_tests.inc;../../muse3_plugins/PerformanceExpression/tests/test-rhythm-preservation.cjs'),
  dict(topic='卷帘草稿删除',path='mscore/performanceeditor/rollwritingmodel.cpp',symbol='void RollWritingBar::discardDraft(',line='1',role='只删除当前范围的草稿，原生撤销及保存恢复',tests='mtest/mscore/performanceeditor/writing_087_tests.inc'),
 ]
+rows += [
+ dict(topic='音源与效果的范围',path='mscore/workflow/vstpanel.cpp',symbol='class Panel final',line='1',role='分别选择当前乐器与主输出效果，逐乐器恢复原音源及预设',tests='mtest/mscore/pluginhost/vst_088_tests.inc'),
+ dict(topic='浮动插件参数',path='mscore/workflow/vstparameters.cpp',symbol='class ParameterWindow final',line='1',role='按实际插件身份跟随排序，输入、拖动与原生撤销同步',tests='mtest/mscore/pluginhost/vst_088_tests.inc'),
+ dict(topic='音源和效果预设',path='mscore/workflow/vstpresets.cpp',symbol='QByteArray readVstPreset(',line='1',role='读写带插件身份的预设，继续读取已有格式',tests='mtest/mscore/pluginhost/vst_088_tests.inc'),
+]
 seen=set();result=[]
 for row in rows:
  key=(row['path'],row['symbol'])
