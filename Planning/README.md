@@ -1,8 +1,8 @@
 # 钢琴编曲工具与后续构想
 
-更新：2026-10-23。当前版本为 **0.89.0 · Kumo branch / Freddd13**。
+更新：2026-10-23。当前版本为 **0.90.0 · Kumo branch / Freddd13**。
 
-从[当前进度与后续完整计划](../P2/native/personal/docs/REWORK_PROGRESS.md)查看全部33项和A—F顺序。A1正常窗口组合与入口图标见[操作记录](../P2/native/personal/docs/WINDOWS_089_CHECKS.md)，下一步A2日常调力度；其余组件图标继续在A4整理。
+从[当前进度与后续完整计划](../P2/native/personal/docs/REWORK_PROGRESS.md)查看全部33项和A—F顺序。A2持续力度参考线、筛选、一起调整与悬浮查看见[操作记录](../P2/native/personal/docs/DYNAMICS_090_CHECKS.md)，下一步A3写法保存；其余组件图标继续在A4整理。
 
 本次[音源面板、换谱与踏板补充安排](../P2/native/personal/docs/SOUND_PEDAL_PLAN.md)分别加入A1、A4与B5。包括混音器占位、共用／独立／保留音源、SF2／钢琴换踏板及编辑器端点操作。
 

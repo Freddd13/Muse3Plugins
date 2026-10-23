@@ -96,6 +96,12 @@ rows += [
  dict(topic='个人工具图标',path='mscore/workflow/workspaceviews.cpp',symbol='QIcon personalToolIcon(',line='1',role='按工具用途绘制图标，菜单、工具栏与工具页共用',tests='mtest/mscore/pluginhost/layout_089_tests.inc'),
  dict(topic='主题刷新图标',path='mscore/shortcut.cpp',symbol='void Shortcut::refreshIcons()',line='1',role='动作创建与主题刷新使用各工具自己的图标',tests='mtest/mscore/pluginhost/layout_089_tests.inc'),
 ]
+rows += [
+ dict(topic='持续力度参考线',path='mscore/performanceeditor/performanceux.cpp',symbol='void PerformanceEditor::paintOriginalVelocity(',line='1',role='按谱表数值曲线显示长音、休止及渐强，筛选与同图／分区一致',tests='mtest/mscore/performanceeditor/dynamics_090_tests.inc'),
+ dict(topic='悬浮查看力度',path='mscore/performanceeditor/performanceux.cpp',symbol='bool PerformanceEditor::peekKeyEvent(',line='1',role='卷帘与参数区移出后继续处理按住查看、松开和常显',tests='mtest/mscore/performanceeditor/dynamics_090_tests.inc'),
+ dict(topic='力度分区筛选',path='mscore/performanceeditor/performanceinteraction.cpp',symbol='void PerformanceEditor::rebuildFilter()',line='1',role='显示、淡色参考、可编辑音及原生选音共用谱表／声部范围',tests='mtest/mscore/performanceeditor/dynamics_090_tests.inc'),
+ dict(topic='滚轮力度浮标',path='mscore/performanceeditor/performancewheel.cpp',symbol='void PerformanceEditor::rememberWheelFeedback()',line='1',role='显示实际固定值或保存的百分比、声部颜色及力度参考值',tests='mtest/mscore/performanceeditor/dynamics_090_tests.inc'),
+]
 seen=set();result=[]
 for row in rows:
  key=(row['path'],row['symbol'])
