@@ -1,6 +1,6 @@
 # P2 开发
 
-2026-10-19：近期新增和修改的功能全部重新验收，当前进度见[完整使用检查与返工记录](../Planning/USABILITY_REWORK_20261019.md)。首先处理窗口、尺寸、全屏与面板组合。
+当前版本0.104.0。B4补齐交叠写谱、量化及录后校正，接着B5音源、踏板与实体录入。全部33项和后续C—F顺序见[当前进度与完整计划](native/personal/docs/REWORK_PROGRESS.md)；[返工记录](../Planning/USABILITY_REWORK_20261019.md)保留各批具体操作。以下为历次实现记录。
 
 
 批准内容见 [实施计划](../Planning/P2_IMPLEMENTATION.md)。
