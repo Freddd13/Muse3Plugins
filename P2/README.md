@@ -1,5 +1,7 @@
 # P2 开发
 
+B5正在检查0.106.0钢琴换踏板，已安装0.105.0；当前结果与后续顺序见[总进度](native/personal/docs/REWORK_PROGRESS.md)。
+
 当前版本0.105.0。B5补齐踏板端点、画间隙、重画、分开及删除恢复，继续自动换踏板、共用／保留音源与实体录入。全部33项和后续C—F顺序见[当前进度与完整计划](native/personal/docs/REWORK_PROGRESS.md)；[返工记录](../Planning/USABILITY_REWORK_20261019.md)保留各批具体操作。以下为历次实现记录。
 
 
