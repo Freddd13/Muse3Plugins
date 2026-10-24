@@ -1,6 +1,6 @@
 # 和弦助手
 
-配套个人软件：0.112.0 · Kumo branch / Freddd13。
+配套个人软件：0.113.0 · Kumo branch / Freddd13。
 
 从“视图 → 和弦助手”打开。当前位置会显示和弦、级数、转位和分析状态；谱面记号在“谱面显示与着色”中开启。
 
@@ -23,3 +23,5 @@
 [连续分解伴奏与和弦变化](https://github.com/Freddd13/MuseScore/blob/3.x/personal/docs/HARMONY_111_GUIDE.md)
 
 [即时摘要、全谱调性与无踏板聚合](https://github.com/Freddd13/MuseScore/blob/3.x/personal/docs/HARMONY_112_GUIDE.md)
+
+[保存和重新采用和弦分析](https://github.com/Freddd13/MuseScore/blob/3.x/personal/docs/HARMONY_113_GUIDE.md)
