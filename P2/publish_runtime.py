@@ -14,6 +14,13 @@ def prepare():
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.exists() or target.read_bytes() != source.read_bytes():
                 target.write_bytes(source.read_bytes())
+    # Remaining plugins import these same maintained music modules.
+    for name in ("Harmony.js", "Timeline.js", "Analysis.js"):
+        source = ROOT.parent / "HarmonyAssistant" / name
+        target = ROOT / "native/share/plugins/HarmonyAssistant" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists() or target.read_bytes() != source.read_bytes():
+            target.write_bytes(source.read_bytes())
     source = (ROOT / "context/musescore-mcp-websocket.qml").read_text("utf8")
     source = source.replace('    id: root', '''    id: root
     property string nativeError: ""
