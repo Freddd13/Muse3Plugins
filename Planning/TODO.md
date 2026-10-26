@@ -1,6 +1,6 @@
 # 未来功能待办与阶段验收
 
-当前优先R1-B：比较SF2、Pianoteq、CFX的多谱音源实例、内存和实际播放负载，继续追查长时间卡住；随后回到C3、C4、D、E、F。R2—R5的和弦整体关闭、原曲定位／选段、只播选段、互停及谱面片段播放已在0.123检查并安装，见[操作与结果](../P2/native/personal/docs/PERFORMANCE_REFERENCE_123_CHECKS.md)。
+R1-B已定位并修复停播换谱后旧谱播放状态残留，三种钢琴60轮实际大谱操作通过；0.124正在收尾。下一项C3-A读取实际按键与分手，再到C3-B连续手位及建议、C4、D、E、F。见[原因和结果](../P2/native/personal/docs/MULTISCORE_AUDIO_CHECKS.md)。
 
 0.123.0已安装。仅改力度保留和弦索引和识别结果，四份600小节的12轮实际标签、绘制和Ctrl缩放已核对；严重长期卡住继续按R1-B追查。原有工作按[总进度](../P2/native/personal/docs/REWORK_PROGRESS.md)执行。
 
