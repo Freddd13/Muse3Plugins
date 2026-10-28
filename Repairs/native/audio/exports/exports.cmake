@@ -1,0 +1,15 @@
+
+
+
+set (EXPORTS_SRC
+    ${CMAKE_CURRENT_LIST_DIR}/midihands.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/midigatefile.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/midigatefile.h
+    ${CMAKE_CURRENT_LIST_DIR}/midigate.h
+    ${CMAKE_CURRENT_LIST_DIR}/exportmidi.h
+    ${CMAKE_CURRENT_LIST_DIR}/exportmidi.cpp
+    )
+
+if (USE_LAME)
+      set (EXPORTS_SRC ${EXPORTS_SRC} ${CMAKE_CURRENT_LIST_DIR}/exportmp3.cpp ${CMAKE_CURRENT_LIST_DIR}/exportmp3.h)
+endif (USE_LAME)
