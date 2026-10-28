@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent
 HOST = ROOT.parent.parent / "muse3_dev/MuseScore"
 REPO = ROOT.parent.parent / "mcp-musescore"
 INSTALLED = "--installed" in sys.argv
+AUTOMATIC = "--no-auto" not in sys.argv
 RUNTIME = HOST / "msvc.install_repair_current_x64" if INSTALLED else ROOT.parent / "P1/out/final-regression/runtime"
 VERSION = (HOST / 'personal/VERSION').read_text('utf8').strip()
 OUT = ROOT / ('out/native-startup-' + VERSION.replace('.', '')) / uuid4().hex[:8]
@@ -21,6 +22,14 @@ from fastmcp import Client
 
 
 async def read_score():
+    if not AUTOMATIC:
+        await asyncio.sleep(6)
+        assert process.poll() is None, 'Program closed during startup check'
+        assert not list((OUT / 'state').glob('instance-*.json')), 'AI started despite the saved choice'
+        report = {'automaticStartup': False, 'staysStopped': True, 'version': VERSION,
+                  'realProgram': True, 'settingsIsolated': True, 'installedPackage': INSTALLED}
+        (OUT/'report.json').write_text(json.dumps(report, indent=2), encoding='utf8')
+        print(json.dumps(report)); return
     for _ in range(300):
         found = list((OUT / "state").glob("instance-*.json"))
         if found:
@@ -40,8 +49,12 @@ async def read_score():
     assert instance["version"] == VERSION, instance
     environment = dict(os.environ, PATH=os.environ.get("SystemRoot", "C:/Windows") + "/System32",
                        MCP_MUSESCORE_STATE_DIR=str(OUT / "state"), FASTMCP_CHECK_FOR_UPDATES="off")
+    mcp = RUNTIME / 'bin/tools/mcp'
+    pointer = mcp / 'current.json'
+    executable = mcp/'MuseScoreMCP.exe'
+    if pointer.exists():executable = mcp/json.loads(pointer.read_text('utf8'))['directory']/'MuseScoreMCP.exe'
     async with Client({"mcpServers": {"musescore": {
-            "command": str(RUNTIME / "bin/tools/mcp/MuseScoreMCP.exe"),
+            "command": str(executable),
             "args": ["--stdio", "--application", str(RUNTIME / "bin/MuseScore3Evo.exe")], "env": environment}}}) as client:
         result = await client.call_tool("read_arrangement_context", {"request": {"whole": True}})
         assert not result.is_error, result
@@ -62,7 +75,8 @@ def main():
     settings.mkdir()
     (settings / "MuseScore3Evo.ini").write_text(
         "[application]\nstartup\\firstStart=false\n"
-        "[ui]\napplication\\startup\\showTours=false\n", encoding="utf8")
+        "[ui]\napplication\\startup\\showTours=false\n" +
+        ("[workflow]\naiAutostart=false\n" if not AUTOMATIC else ""), encoding="utf8")
     if not INSTALLED:
         shutil.copy2(HOST / "msvc.build_harmony_release_x64/main/Release/MuseScore3Evo.exe", RUNTIME / "bin/MuseScore3Evo.exe")
         shutil.copytree(HOST / "share/workflow", RUNTIME / "workflow", dirs_exist_ok=True)

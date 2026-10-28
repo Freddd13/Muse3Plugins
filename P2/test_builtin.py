@@ -17,6 +17,8 @@ source=source.replace("# Qt's style loader", "for p in Path("+repr(str(H/'share/
 source=source.replace("# Qt's style loader", "stage_file(Path("+repr(str(B/'audio/vst/Release/MuseScoreVstHost.exe'))+"),runtime/'bin/MuseScoreVstHost.exe')\n# Qt's style loader")
 if os.environ.get('P2_TEST_SPECTRUM'):
  source=source.replace("# Qt's style loader","stage_file(Path("+repr(str(B/'mscore/referenceaudio/Release/kumo_referenceaudio.dll'))+"),runtime/'bin/kumo_referenceaudio.dll')\n# Qt's style loader")
+if os.environ.get('P2_TEST_MCP'):
+ source=source.replace("# Qt's style loader", "for p in Path("+repr(str(R/'out/mcp-dist/MuseScoreMCP'))+").rglob('*'):\n if p.is_file():\n  destination=runtime/'bin/tools/mcp/test-current'/p.relative_to(Path("+repr(str(R/'out/mcp-dist/MuseScoreMCP'))+"))\n  destination.parent.mkdir(parents=True,exist_ok=True)\n  stage_file(p,destination)\n(runtime/'bin/tools/mcp/current.json').write_text('{\"directory\":\"test-current\"}',encoding='utf8')\n# Qt's style loader")
 if os.environ.get('P2_FEATURE_GATE_OFF'):
  source=source.replace("# Qt's style loader", "(runtime/'bin/kumo.ini').write_text('[features]\\nenable_exp_feature=false\\n',encoding='ascii')\n# Qt's style loader")
 if sys.argv[1:]:source=source.replace("[str(target), '-o', str(log) + ',txt']",repr(['__TEST_TARGET__']+sys.argv[1:])+" + ['-o', str(log) + ',txt']").replace("'__TEST_TARGET__'",'str(target)')

@@ -19,8 +19,11 @@ def state_directory() -> Path:
 def configuration_path(application: str | None = None) -> Path:
     if application:
         return Path(application).resolve().parent / "kumo.ini"
-    # tools/mcp/MuseScoreMCP.exe -> bin/kumo.ini
-    return Path(sys.executable).resolve().parents[2] / "kumo.ini"
+    executable = Path(sys.executable).resolve()
+    for parent in executable.parents:
+        if parent.name.lower() == "mcp" and parent.parent.name.lower() == "tools":
+            return parent.parent.parent / "kumo.ini"
+    return executable.parents[2] / "kumo.ini"
 
 
 def enabled(path: Path) -> bool:
@@ -106,10 +109,62 @@ def codex_configuration() -> Path:
     return Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")) / "config.toml"
 
 
-def register_codex(application: str | None = None) -> dict:
+def codex_status() -> dict:
     import tomlkit
+    config = codex_configuration()
+    if not config.exists():
+        return {"configured": False, "enabled": False, "configuration": str(config)}
+    document = tomlkit.parse(config.read_text("utf-8-sig"))
+    server = document.get("mcp_servers", {}).get("musescore")
+    return {"configured": server is not None,
+            "enabled": server is not None and bool(server.get("enabled", True)),
+            "configuration": str(config)}
+
+
+def _save_codex(document, old: bytes) -> str:
     import tempfile
     import uuid
+    import tomlkit
+    config = codex_configuration()
+    config.parent.mkdir(parents=True, exist_ok=True)
+    backup = ""
+    if old:
+        backup = str(config.with_name(config.name + ".musescore-" + time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8] + ".bak"))
+        with Path(backup).open("xb") as file:
+            file.write(old)
+    fd, temporary = tempfile.mkstemp(prefix=".musescore-", suffix=".toml", dir=config.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as file:
+            file.write(tomlkit.dumps(document))
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, config)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+    return backup
+
+
+def set_codex_enabled(value: bool) -> dict:
+    import tomlkit
+    config = codex_configuration()
+    if not config.exists():
+        raise RuntimeError("请先点击“配置 Codex”，建立 MuseScore 连接。")
+    old = config.read_bytes()
+    document = tomlkit.parse(old.decode("utf-8-sig"))
+    server = document.get("mcp_servers", {}).get("musescore")
+    if server is None:
+        raise RuntimeError("请先点击“配置 Codex”，建立 MuseScore 连接。")
+    if bool(server.get("enabled", True)) == value:
+        return {"ok": True, "codex": codex_status(), "message": "Codex 启动设置已保持。"}
+    server["enabled"] = value
+    backup = _save_codex(document, old)
+    return {"ok": True, "codex": codex_status(), "backup": backup,
+            "message": "已开启。请在 Codex 重新连接 MuseScore。" if value else "已关闭 Codex 自动启动。已打开的会话可在下方选择结束。"}
+
+
+def register_codex(application: str | None = None) -> dict:
+    import tomlkit
     config = codex_configuration()
     old = config.read_bytes() if config.exists() else b""
     document = tomlkit.parse(old.decode("utf-8-sig")) if old else tomlkit.document()
@@ -124,24 +179,9 @@ def register_codex(application: str | None = None) -> dict:
     for key in ("url", "auth", "bearer_token_env_var", "http_headers", "env_http_headers"):
         if key in server:
             del server[key]
-    server["enabled"] = True
+    server.setdefault("enabled", True)
     server["startup_timeout_sec"] = 20
     server["tool_timeout_sec"] = 60
-    config.parent.mkdir(parents=True, exist_ok=True)
-    backup = None
-    if old:
-        backup = config.with_name(config.name + ".musescore-" + time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8] + ".bak")
-        with backup.open("xb") as file:
-            file.write(old)
-    fd, temporary = tempfile.mkstemp(prefix=".musescore-", suffix=".toml", dir=config.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as file:
-            file.write(tomlkit.dumps(document))
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary, config)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
-    return {"ok": True, "configuration": str(config), "backup": str(backup) if backup else "",
-            "message": "已配置 MuseScore。重新连接 Codex 或新建对话后，可以读取当前乐谱。"}
+    backup = _save_codex(document, old)
+    return {"ok": True, "configuration": str(config), "backup": backup, "codex": codex_status(),
+            "message": "已配置 MuseScore。重新连接 Codex 或新建对话后，可以读取当前乐谱。" if server["enabled"] else "已配置 MuseScore。Codex 启动仍为关闭，可在下方勾选开启。"}
