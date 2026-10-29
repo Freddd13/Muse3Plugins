@@ -6,7 +6,7 @@ MuseScore {
     id: root
     menuPath: "Plugins.MuseScore API Server"
     description: "MuseScore Evolution bridge for Codex and MCP clients"
-    version: "2.5.0"
+    version: "2.6.0"
     
     property var arrangementObserver: null
     property var clientConnections: []
@@ -87,6 +87,7 @@ MuseScore {
         switch(command.action) {
             case "arrangementState":
             case "arrangementRange":
+            case "arrangementImage":
             case "arrangementSuggestions":
             case "storeArrangementInfo":
             case "submitArrangementOptions":
@@ -100,6 +101,7 @@ MuseScore {
             case "ping":                    return "pong";
             case "getCapabilities":         return getCapabilities();
             case "undo":                    return undo();
+            case "redo":                    return redo();
             case "goToBeginningOfScore":    return goToBeginningOfScore();
             case "processSequence":         return processSequence(command.params);
 
@@ -325,6 +327,12 @@ MuseScore {
         // Native undo must run outside a new command transaction.
         cmd("undo");
         return { success: true, message: "Undo successful" };
+    }
+
+    function redo() {
+        if (!curScore) return { error: "No score open" };
+        cmd("redo");
+        return { success: true, message: "Redo successful" };
     }
 
     function goToBeginningOfScore() {
@@ -1131,6 +1139,7 @@ MuseScore {
                  museScoreVersion: mscoreVersion, ticksPerQuarter: division,
                  scoreOpen: Boolean(curScore), transport: "QtWebSockets",
                  arrangementContext: arrangementObserver && typeof arrangementObserver.arrangementRequest === "function" ? "arrangement-context/1" : null,
+                 nativeScoreImage: arrangementObserver && typeof arrangementObserver.arrangementImage === "function" ? "score-image/1" : null,
                  scoreIdentity: arrangementObserver && typeof arrangementObserver.scoreIdentity === "function" ? "score-identity/1" : null,
                  scoreObserver: typeof newScoreObserver === "function" };
     }
