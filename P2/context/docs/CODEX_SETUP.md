@@ -1,16 +1,39 @@
 # Codex 安装与使用
 
+0.133／MCP2.4起，可以在软件中独立启停、设置Codex启动并查看连接进程，步骤见[管理连接](CONNECTION_CONTROL.md)。更新连接路径时保留已有关闭状态。
+
+## 读取MuseScore原生图片（0.141／MCP2.6）
+
+打开要讨论的谱段，在“AI 连接”点“配置 Codex”并重新连接。在Codex说：“读取当前选段的音符和MuseScore原生谱图。”程序按当前排版提供PNG，连音组、延音和人工位置一起保留。
+
+先用`get_score_identity`确认谱，再用`read_arrangement_context`取得`contextId`。`get_score_image(context_id, image_index=0)`返回图片和音符像素位置；用`nextImage`继续较长范围。引用共用同一读取版本。改谱后重新读取，继续比较和采用。
+
+`undo`撤销最近修改，`redo`恢复刚撤销的一步。旧`show_score`用于音符示意，`get_score`用于LilyPond音符文本。
+
+## 确认当前谱与标题（MuseScore 0.140／MCP 2.5）
+
+1. 在乐谱标签页选中要讨论的总谱或分谱，打开“视图 → AI 连接”。
+2. 第一次使用或升级后点“配置 Codex”，再到Codex重新连接。新包使用`bin/tools/mcp/2.7.0/MuseScoreMCP.exe`；程序会复制当前包的实际位置。
+3. 多个程序窗口同时打开时，列表显示谱面标题、文件名、总谱／分谱、进程和版本。选一行，点“使用选中的窗口”。
+4. 点“检查连接”，再在Codex说：“确认当前窗口、谱面标题、作品信息标题、文件名和选区。”
+
+`get_score_identity`直接读取当前标签页。谱面标题、作品信息和文件名分别返回；默认显示谱面可见标题。尚未保存的修改、另存后的路径及分谱所属总谱也会返回。连接跟随所选程序窗口，切换该窗口中的标签页后再次读取即可。
+
+编配使用`read_arrangement_context`读取选段；`get_score_data`保留结构音符入口；`get_score`提供LilyPond音符文本。现有`show_score`显示音符示意图，0.141起用get_score_image读取MuseScore原生选段图及相同版本的音符引用。
+
+已有Codex关闭状态会保留，可在窗口勾选“允许 Codex 启动 MuseScore MCP”。查看进程及停止某条连接，见[管理连接](CONNECTION_CONTROL.md)。
+
 ## 使用完整程序包
 
 0.63 起从 MuseScore 的“视图 → AI 连接”点“配置 Codex”，再点“检查连接”。打开多个窗口时选择谱名。重新连接 Codex 或新建对话后，可以直接说“读取当前谱名和选区”。
 
-程序包包含 `bin/tools/mcp/MuseScoreMCP.exe` 和运行文件。用户直接使用 exe；开发环境的 Python 与虚拟环境留在本仓库。
+程序包包含 `bin/tools/mcp/2.7.0/MuseScoreMCP.exe` 和运行文件。用户直接使用 exe；开发环境的 Python 与虚拟环境留在本仓库。
 
 Codex 使用本地 stdio 启动命令。手动配置可从程序窗口复制，示例如下，路径按安装位置调整：
 
 ```toml
 [mcp_servers.musescore]
-command = 'E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_repair_current_x64\bin\tools\mcp\MuseScoreMCP.exe'
+command = 'E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_repair_current_x64\bin\tools\mcp\2.7.0\MuseScoreMCP.exe'
 args = ['--stdio', '--application', 'E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_repair_current_x64\bin\MuseScore3Evo.exe']
 startup_timeout_sec = 20
 tool_timeout_sec = 60

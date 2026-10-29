@@ -6,7 +6,7 @@ MuseScore {
     id: root
     menuPath: "Plugins.MuseScore API Server"
     description: "MuseScore Evolution bridge for Codex and MCP clients"
-    version: "2.6.0"
+    version: "2.7.0"
     
     property var arrangementObserver: null
     property var clientConnections: []
@@ -86,6 +86,8 @@ MuseScore {
         
         switch(command.action) {
             case "arrangementState":
+            case "arrangementPlaybackPrepare":
+            case "arrangementPlaybackPage":
             case "arrangementRange":
             case "arrangementImage":
             case "arrangementSuggestions":

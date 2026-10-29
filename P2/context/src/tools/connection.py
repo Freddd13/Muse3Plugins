@@ -25,7 +25,7 @@ def setup_connection_tools(mcp, client: MuseScoreClient, context_service=None):
         return await client.send_command("ping")
 
     @mcp.tool(
-        description="Get information about the current score.",
+        description="读取当前乐谱的LilyPond音符文本。确认窗口、谱名和总谱／分谱用get_score_identity；编配读取用read_arrangement_context。",
         tags={"connection", "score"},
         annotations={"readOnlyHint": True},
     )
@@ -36,23 +36,36 @@ def setup_connection_tools(mcp, client: MuseScoreClient, context_service=None):
             analysis = res["analysis"]
             lily_str = json_to_lilypond(analysis)
             
-            meta = []
+            identity = analysis.get("identity", {})
+            meta = ["当前谱：" + (identity.get("displayTitle") or analysis.get("title") or "未命名乐谱")]
+            if identity.get("partName"):
+                meta.append("分谱：" + identity["partName"])
+            if identity.get("filePath"):
+                meta.append("文件：" + identity["filePath"])
             if "numMeasures" in analysis:
-                meta.append(f"Total Mesures: {analysis['numMeasures']}")
-                
-            num_staves = len(analysis.get("staves", []))
-            if num_staves > 0:
-                meta.append(f"Nombre de portées: {num_staves}")
-                
-            meta_str = ", ".join(meta) if meta else "Aucune métadonnée"
-            
-            return f"[Métadonnées] {meta_str}\n[Partition]\n{lily_str}"
+                meta.append(f"小节数：{analysis['numMeasures']}")
+            meta.append(f"谱表数：{len(analysis.get('staves', []))}")
+            return "\n".join(meta) + "\n[音符文本（LilyPond）]\n" + lily_str
+
         return res
 
     @mcp.tool(description="Read bridge version, MuseScore version, score availability and optional Evolution API support.",
               tags={"connection"}, annotations={"readOnlyHint": True})
     async def get_capabilities():
         return unwrap_response(await client.send_command("getCapabilities"))
+
+    @mcp.tool(description="读取当前程序窗口、标签页、总谱／分谱、谱面标题、作品信息标题、文件位置和未保存状态。先用这份信息确认正在讨论哪份谱。读取保持选音与播放位置。",
+              tags={"connection", "score"}, annotations={"readOnlyHint": True})
+    async def get_score_identity():
+        try:
+            result = unwrap_response(await client.send_command("getScoreIdentity"))
+        except ToolError as error:
+            if "unknown command" in str(error).lower():
+                raise ToolError("当前程序未提供乐谱身份，请更新MuseScore并重新连接。") from error
+            raise
+        if not isinstance(result, dict) or "hasScore" not in result:
+            raise ToolError("当前程序未提供乐谱身份，请更新MuseScore并重新连接。")
+        return result
 
     @mcp.tool(description="Read authoritative structured notes, voices, timing, ties, tuning and velocity properties. Measure bounds are inclusive; reading leaves selection unchanged.",
               tags={"score"}, annotations={"readOnlyHint": True})
@@ -96,6 +109,8 @@ def score_data_projection(context):
             "elements": {f"staff{i}": [] for i in range(staff_count)}})
     groups = {}
     for row in snapshot["notes"]:
+        if row.get("contextOnly"):
+            continue
         key = (row["tick"], row["track"], row.get("graceIndex", -1))
         if key not in groups:
             groups[key] = {"name": "Chord", "startTick": row["tick"], "voice": row["track"] % 4,
@@ -105,7 +120,7 @@ def score_data_projection(context):
             measures[row["measure"]]["numElements"] += 1
         group = groups[key]
         group["isTie"] |= row.get("tieForward", False)
-        group["notes"].append({**row, "pitchMidi": row["writtenPitch"], "tpc": row["writtenTpc"],
+        group["notes"].append({**row, "pitchMidi": row.get("notatedPitch", row["writtenPitch"]), "tpc": row.get("notatedTpc", row["writtenTpc"]),
             "tieForward": row.get("tieForward", False), "veloType": row["velocityType"], "veloOffset": row["velocityRaw"]})
     ordered = sorted(measures.values(), key=lambda m: m["startTick"])
     for row in snapshot["rests"]:
@@ -114,6 +129,7 @@ def score_data_projection(context):
             measure["elements"][f"staff{row['track']//4}"].append({"name": "Rest", "startTick": row["tick"],
                 "voice": row["track"] % 4, "durationTicks": row["duration"], "quarterDuration": row["quarterDuration"]})
             measure["numElements"] += 1
-    return {"ticksPerQuarter": context["ticksPerQuarter"], "title": context.get("title", ""),
-        "numMeasures": scope["lastMeasure"], "staves": [{"name": f"staff{i}"} for i in range(staff_count)],
+    metadata = {key: context[key] for key in ("identity", "scoreSessionId", "documentId") if key in context}
+    return {**metadata, "ticksPerQuarter": context["ticksPerQuarter"], "title": context.get("title", ""),
+        "numMeasures": scope["lastMeasure"], "staves": [next((dict(row) for row in snapshot.get("staves", []) if row["index"]==i), {"index": i,"name": f"staff{i}"}) for i in range(staff_count)],
         "measures": ordered, "snapshotId": context["snapshotId"], "coverage": context["coverage"]}

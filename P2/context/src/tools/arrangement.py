@@ -11,7 +11,7 @@ def setup_arrangement_tools(mcp, service: ContextService):
         except ContextError as error:
             raise ToolError(str(error)) from error
 
-    @mcp.tool(description="Read the current in-memory score selection in bounded host pages. Includes exact quarter-unit timing, voices, spelling, ties, hands, velocity, repeat occurrences, available harmonic interpretation and supplied materials. request: scope {start,end,firstTrack,endTrack}, whole, firstMeasure/lastMeasure, fields ['geometry'], taskBrief. Read first before submitting options.",
+    @mcp.tool(description="Read the current in-memory score selection in bounded host pages. Includes exact quarter-unit timing, voices, spelling, ties, hands, velocity, repeat occurrences, available harmonic interpretation and supplied materials. request: scope {start,end,firstTrack,endTrack}, whole, firstMeasure/lastMeasure, purpose analysis/performance/engraving; fields ['geometry','performance'], taskBrief. Read first before submitting options.",
               tags={"arrangement", "score"}, annotations={"readOnlyHint": True})
     async def read_arrangement_context(request: Annotated[dict | None, "范围、可选字段和本次编配要求"] = None):
         return await call(service.capture(request))
@@ -37,6 +37,11 @@ def setup_arrangement_tools(mcp, service: ContextService):
             return service.context_result(context_id)
         except ContextError as error:
             raise ToolError(str(error)) from error
+
+    @mcp.tool(description="Refresh a retained task after score edits. Keeps its original score, range, purpose and requirements while reading current notes, material sources and requested performance. Ordinary browsing selection stays unchanged.",
+              tags={"arrangement"}, annotations={"readOnlyHint": True})
+    async def refresh_arrangement_context(context_id: Annotated[str, "要继续的contextId"], task_brief: Annotated[dict | None, "补充本次编配要求"] = None):
+        return await call(service.refresh(context_id, task_brief))
 
     @mcp.tool(description="Read one native page directly. Use arrangementState via get_arrangement_state, then pass its snapshotId and scope, fromTick and limit (1-64). Useful for large scores.",
               tags={"arrangement"}, annotations={"readOnlyHint": True})

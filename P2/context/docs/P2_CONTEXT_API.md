@@ -1,8 +1,19 @@
 # P2 当前谱与局部编配接口
 
-软件个人版 0.60.0；QML 桥 2.2.0。
+当前软件个人版0.143.0，MCP／QML桥2.7.0。旧2.2接口继续保留。
 
 用户操作见 MuseScore 仓库 `personal/docs/P2_CONTEXT_060_GUIDE.md`。这里说明服务分工和数据，便于维护与接入。
+
+## 继续任务与按用途读取 · 2.7
+
+- `purpose: analysis`为默认记谱分析。`performance`增加`performance.events/ranges`，读取实际起音、松键、力度、反复秒数及CC64。`engraving`增加音符位置，可结合`get_score_image`看原生排版。
+- `notatedPitch/notatedTpc/noteName`为当前谱面音高及拼写，`concertPitch/concertTpc`为实音，`soundingPitch`包含播放八度等处理。旧`writtenPitch/writtenTpc`保留兼容含义。
+- `measure`从第一小节按顺序计数，`displayMeasureNumber`保留谱上编号。`parts/staves`提供原生名称、所属乐器、谱号及移调。
+- `refresh_arrangement_context(context_id, task_brief)`沿用原谱、范围、用途和要求，读取当前修改。普通选音用于浏览；切到另一谱时先回到原谱继续。
+- `information/reference/manualHarmony/harmonyAnalysis`保留来源，按选段提供；`optionalCoverage`说明已提供的资料及范围。原曲原生关联的`from/until/ms`为毫秒；用户材料自己的时间单位原样保存。
+- `performance.events`的`on/off`带音符引用。进入选段前的踏板带`contextOnly`和`contextForOccurrence`，便于重建每次出现的初始状态。这里提供音符与延音踏板事件；音源响度继续由播放系统处理。
+
+保存解释的例子：明确让AI保存后，调用`save_arrangement_information`，提供`assertions/materials/alignments/analysisRuns`中的相应集合。每项有`id`、`origin`及作用范围；更新已有编号会补充原条目，原有其它资料保留。一次保存一次原生撤销。
 
 ## 操作顺序
 

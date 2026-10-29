@@ -6,6 +6,8 @@
 
 可选解释/原曲资料、直接读取当前内存谱、外部材料/模型与讨论/回写边界，详见 [上下文集成契约](docs/AI_CONTEXT_INTEGRATION.md)。
 
+当前0.143／MCP2.7可按分析、演奏或净谱读取选段，并用`refresh_arrangement_context`继续原范围与要求；实际音名、乐器、反复和参考资料见[P2接口](docs/P2_CONTEXT_API.md)。
+
 # MuseScore MCP Server
 
 A Model Context Protocol (MCP) server that provides programmatic control over MuseScore, via a WebSocket-based plugin system. This allows AI assistants like Claude to compose music, add lyrics, navigate scores, and control MuseScore directly.

@@ -87,7 +87,7 @@ class MuseScoreClient:
         payload = json.dumps(command)
 
         last_error: Optional[str] = None
-        read_only = action in {"ping", "getCapabilities", "getScore", "getCursorInfo", "arrangementState", "arrangementRange", "arrangementSuggestions", "arrangementOperationStatus"}
+        read_only = action in {"ping", "getCapabilities", "getScoreIdentity", "arrangementImage", "getScore", "getCursorInfo", "arrangementState", "arrangementRange", "arrangementPlaybackPrepare", "arrangementPlaybackPage", "arrangementSuggestions", "arrangementOperationStatus"}
         attempts = 2 if read_only else 1
         for attempt in range(attempts):
             if not self.websocket:
