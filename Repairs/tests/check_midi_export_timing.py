@@ -20,6 +20,7 @@ def read_midi(path: Path) -> dict:
     assert division > 0 and not division & 0x8000, "This fixture uses PPQ timing"
     offset = 8 + header_size
     notes, metadata, controls, tempos = [], [], [], {0: 500_000}
+    note_events, control_events = [], []
     for _ in range(track_count):
         assert raw[offset:offset + 4] == b"MTrk"
         size = int.from_bytes(raw[offset + 4:offset + 8], "big")
@@ -70,10 +71,13 @@ def read_midi(path: Path) -> dict:
                 running = status
                 kind = status & 0xf0
                 payload = take(1 if kind in (0xc0, 0xd0) else 2)
+                if kind in (0x80, 0x90):
+                    note_events.append((tick, status & 0x0f, payload[0], payload[1] if kind == 0x90 else 0))
                 if kind == 0x90 and payload[1] > 0:
                     notes.append((tick, payload[0]))
                 elif kind == 0xb0:
                     controls.append((tick, payload[0], payload[1]))
+                    control_events.append((tick, status & 0x0f, payload[0], payload[1]))
     assert offset == len(raw)
     ticks = sorted(tempos)
     times = [0.0]
@@ -85,6 +89,9 @@ def read_midi(path: Path) -> dict:
         return times[index] + (tick - ticks[index]) * tempos[ticks[index]] / division / 1_000_000
 
     return {
+        "division": division,
+        "note_events": note_events,
+        "control_events": control_events,
         "notes": [(seconds(t), pitch) for t, pitch in notes],
         "meta": [(seconds(t), kind, data) for t, kind, data in metadata],
         "controllers": [(seconds(t), cc, value) for t, cc, value in controls],
