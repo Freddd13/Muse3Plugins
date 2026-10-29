@@ -12,7 +12,7 @@ Object.assign(original, {midi:{path:'one.mid',notes:[{pitch:60,velocity:91}]},wo
     scope:{start:480,end:1920},retainedScope:{start:480,end:1920},dirtyProject:true,selected:2,
     links:[{scoreId:'score-note',midiId:'played-note'}],manualAnchors:[{scoreId:'anchor-note',midiId:'played-anchor'}],
     previewUndo:[{config:{velocityStrength:70},links:[]}],previewRedo:[{config:{velocityStrength:55}}],
-    appliedProgress:{velocity:{'already-used':true},tempos:{}},progressVersion:4,
+    applicationRecords:{velocity:{'already-used':{type:1,raw:106}},tempos:{}},progressVersion:4,
     pendingProjectRestore:{url:'saved.json',data:{source:'original.mid'}},busy:false,stale:false,previewUpdating:false});
 const saved = session.snapshot(original, 70);
 original.midi.notes[0].velocity = 1;
@@ -31,6 +31,8 @@ assert.equal(restored.selected,-1);
 assert.equal(restored.pendingProjectRestore,null);
 assert.equal(restored.recordingImport,false);
 assert.equal(restored.recordedPath,'');
+session.restore(restored,{appliedProgress:{velocity:{legacy:true},tempos:{}}},defaults);
+assert.equal(restored.applicationRecords.velocity.legacy,true);
 const pendingTake={...original,recordingImport:true,recordedPath:'previous.mid',requestedMidiPath:'new-take.mid',alignmentOnShow:true};
 const pendingSaved=session.snapshot(pendingTake,0);session.restore(restored,pendingSaved,defaults);
 assert.equal(restored.recordingImport,true);assert.equal(restored.recordedPath,'previous.mid');assert.equal(restored.requestedMidiPath,'new-take.mid');assert.equal(restored.alignmentOnShow,true);
