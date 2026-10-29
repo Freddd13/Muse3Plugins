@@ -1,0 +1,11 @@
+--- a/mscore/miconengine.cpp
++++ b/mscore/miconengine.cpp
+@@ -191,6 +191,8 @@
+ 
+ QPixmap MIconEngine::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
+       {
++      if (size.isEmpty())
++            return QPixmap();
+       QPixmap pm;
+ 
+       QString pmckey(d->pmcKey(size, mode, state));
