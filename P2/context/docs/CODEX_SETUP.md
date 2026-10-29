@@ -13,7 +13,7 @@
 ## 确认当前谱与标题（MuseScore 0.140／MCP 2.5）
 
 1. 在乐谱标签页选中要讨论的总谱或分谱，打开“视图 → AI 连接”。
-2. 第一次使用或升级后点“配置 Codex”，再到Codex重新连接。新包使用`bin/tools/mcp/2.7.0/MuseScoreMCP.exe`；程序会复制当前包的实际位置。
+2. 第一次使用或升级后点“配置 Codex”，再到Codex重新连接。新包使用`bin/tools/mcp/2.7.1/MuseScoreMCP.exe`；程序会复制当前包的实际位置。
 3. 多个程序窗口同时打开时，列表显示谱面标题、文件名、总谱／分谱、进程和版本。选一行，点“使用选中的窗口”。
 4. 点“检查连接”，再在Codex说：“确认当前窗口、谱面标题、作品信息标题、文件名和选区。”
 
@@ -27,13 +27,13 @@
 
 0.63 起从 MuseScore 的“视图 → AI 连接”点“配置 Codex”，再点“检查连接”。打开多个窗口时选择谱名。重新连接 Codex 或新建对话后，可以直接说“读取当前谱名和选区”。
 
-程序包包含 `bin/tools/mcp/2.7.0/MuseScoreMCP.exe` 和运行文件。用户直接使用 exe；开发环境的 Python 与虚拟环境留在本仓库。
+程序包包含 `bin/tools/mcp/2.7.1/MuseScoreMCP.exe` 和运行文件。用户直接使用 exe；开发环境的 Python 与虚拟环境留在本仓库。
 
 Codex 使用本地 stdio 启动命令。手动配置可从程序窗口复制，示例如下，路径按安装位置调整：
 
 ```toml
 [mcp_servers.musescore]
-command = 'E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_repair_current_x64\bin\tools\mcp\2.7.0\MuseScoreMCP.exe'
+command = 'E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_repair_current_x64\bin\tools\mcp\2.7.1\MuseScoreMCP.exe'
 args = ['--stdio', '--application', 'E:\programming\funcodes\muse3_dev\MuseScore\msvc.install_repair_current_x64\bin\MuseScore3Evo.exe']
 startup_timeout_sec = 20
 tool_timeout_sec = 60

@@ -49,7 +49,7 @@ setup_arrangement_tools(mcp, context_service)
 
 # Setup all tool categories
 setup_connection_tools(mcp, client, context_service)
-setup_navigation_tools(mcp, client)
+setup_navigation_tools(mcp, client, context_service)
 setup_notes_measures_tools(mcp, client)
 setup_staff_instruments_tools(mcp, client)
 setup_time_tempo_tools(mcp, client)

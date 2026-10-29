@@ -1,6 +1,6 @@
 # P2 当前谱与局部编配接口
 
-当前软件个人版0.143.0，MCP／QML桥2.7.0。旧2.2接口继续保留。
+当前软件个人版0.144.0，MCP2.7.1／QML桥2.7.0。旧2.2接口继续保留。
 
 用户操作见 MuseScore 仓库 `personal/docs/P2_CONTEXT_060_GUIDE.md`。这里说明服务分工和数据，便于维护与接入。
 
@@ -16,6 +16,8 @@
 保存解释的例子：明确让AI保存后，调用`save_arrangement_information`，提供`assertions/materials/alignments/analysisRuns`中的相应集合。每项有`id`、`origin`及作用范围；更新已有编号会补充原条目，原有其它资料保留。一次保存一次原生撤销。
 
 ## 操作顺序
+
+导航工具提供原生`scope/identity/snapshotId`，保留准确小节、谱表和当前谱名；需要音符时继续`read_arrangement_context`。旧桥继续提供音符文本。
 
 `read_arrangement_context` 读取当前内存谱。传入选区或小节范围及 `taskBrief`，取得 `contextId` 和 `snapshotId`。同一份乐谱版本可以对应几个不同任务；每份任务保留自己的范围和要求。
 

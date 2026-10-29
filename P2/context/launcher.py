@@ -10,7 +10,8 @@ os.environ.setdefault("FASTMCP_CHECK_FOR_UPDATES", "off")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="MuseScore 与 Codex 的本机连接")
-    parser.add_argument("--version", action="version", version="MuseScoreMCP 2.4.0")
+    from src.version import VERSION
+    parser.add_argument("--version", action="version", version="MuseScoreMCP " + VERSION)
     parser.add_argument("--stdio", action="store_true")
     parser.add_argument("--diagnose", action="store_true")
     parser.add_argument("--register-codex", action="store_true")
@@ -40,11 +41,22 @@ def main() -> None:
                 async def ping():
                     client = MuseScoreClient(host, port, timeout=5)
                     try:
-                        return await client.send_command("ping")
+                        reply = await client.send_command("ping")
+                        value = {"connection": reply}
+                        if reply.get("result") == "pong":
+                            identity = await client.send_command("getScoreIdentity")
+                            body = identity.get("result", identity)
+                            if isinstance(body, dict) and "hasScore" in body:
+                                value["identity"] = body
+                        return value
                     finally:
                         await client.close()
-                result["connection"] = asyncio.run(ping())
+                result.update(asyncio.run(ping()))
                 result["ok"] = result["connection"].get("result") == "pong"
+                if result["ok"] and "identity" in result:
+                    identity = result["identity"]
+                    result["message"] = ("已连接：" + identity["displayTitle"] +
+                        (" · 总谱" if identity.get("isMaster") else " · 分谱：" + identity.get("partName", ""))) if identity.get("hasScore") else "连接成功，打开乐谱即可读取。"
             else:
                 result["ok"] = False
                 result["error"] = "个人扩展功能已关闭，请检查程序旁的 kumo.ini。" if not result["enabled"] else "请打开 MuseScore，在 AI 连接中检查当前窗口。"
