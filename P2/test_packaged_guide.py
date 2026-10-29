@@ -34,6 +34,10 @@ class PackagedGuideTests(unittest.TestCase):
             self.assertIn('https://example.org/project/blob/revision/libmscore/note.cpp', output)
             self.assertIn('[例子](missing.md)', output)
             self.assertEqual((source / 'personal/USER_GUIDE.md').read_text('utf8'), text)
+            nested = source / 'install'
+            guide.export_guide(source, nested, [repository])
+            self.assertFalse(guide.check_export(nested)['broken'])
+            self.assertEqual((source / 'personal/USER_GUIDE.md').read_text('utf8'), text)
 
     def test_cross_repository_and_unpublished_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -51,7 +55,7 @@ class PackagedGuideTests(unittest.TestCase):
             self.assertEqual(len(guide.check_export(installed)['broken']), 1)
             self.assertIn('%E9%9F%B3%E7%AC%A6.md', result['updated_links'][0]['url'])
             with self.assertRaises(ValueError):
-                guide.export_guide(source, source / 'nested', [repository])
+                guide.export_guide(source, source, [repository])
 
 
 if __name__ == '__main__':
