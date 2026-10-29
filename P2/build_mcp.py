@@ -5,6 +5,7 @@ import json
 import hashlib
 import subprocess
 import sys
+import argparse
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parent.parent / "mcp-musescore"
@@ -13,8 +14,14 @@ PYTHON = REPO / ".venv/Scripts/python.exe"
 
 def main():
     output = ROOT / "out"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package-version", default="")
+    options = parser.parse_args()
+    if options.package_version and not __import__('re').fullmatch(r"\d+\.\d+\.\d+", options.package_version):
+        parser.error("package-version must use major.minor.patch")
+    dist = output / ("mcp-dist-" + options.package_version if options.package_version else "mcp-dist")
     args = [str(PYTHON), "-m", "PyInstaller", "--noconfirm", "--onedir", "--console",
-            "--name", "MuseScoreMCP", "--distpath", str(output / "mcp-dist"),
+            "--name", "MuseScoreMCP", "--distpath", str(dist),
             "--workpath", str(output / "mcp-build"), "--specpath", str(output / "mcp-spec"),
             "--paths", str(REPO), "--collect-data", "fastmcp",
             "--copy-metadata", "fastmcp", "--copy-metadata", "websockets",
@@ -28,7 +35,7 @@ def main():
     if code:
         print(log)
         raise SystemExit(code)
-    package = output / "mcp-dist/MuseScoreMCP"
+    package = dist / "MuseScoreMCP"
     # Include the exact dependency versions and their distributed license files.
     metadata = subprocess.check_output([str(PYTHON), "-c", """
 import importlib.metadata as m, json, pathlib, sys
