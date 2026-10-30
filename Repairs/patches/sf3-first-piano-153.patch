@@ -1,0 +1,153 @@
+diff --git a/audio/midi/fluid/fluid.cpp b/audio/midi/fluid/fluid.cpp
+index 200b6a2dc..4b3172465 100644
+--- a/audio/midi/fluid/fluid.cpp
++++ b/audio/midi/fluid/fluid.cpp
+@@ -30,6 +30,7 @@
+ #include "mscore/preferences.h"
+ #include "mscore/extension.h"
+ #include <memory>
++#include <QScopeGuard>
+ #include <new>
+ 
+ namespace FluidS {
+@@ -144,6 +145,11 @@ void Fluid::freeVoice(Voice* v)
+ 
+ void Fluid::play(const PlayEvent& event)
+       {
++      // Font loading and replacement own this lock. The audio thread keeps
++      // running while the loader prepares complete sample buffers.
++      if (!mutex.tryLock())
++            return;
++      const auto unlock = qScopeGuard([this] { mutex.unlock(); });
+       bool err = false;
+       int ch   = event.channel();
+ 
+@@ -696,12 +702,28 @@ std::vector<SoundFontInfo> Fluid::soundFontsInfo() const
+ //    return false on error
+ //---------------------------------------------------------
+ 
++bool Fluid::prepareDefaultPreset()
++      {
++      // Existing channels are prepared by updatePatchList(). A new channel
++      // starts on bank 0/program 0 before its queued initialization arrives.
++      if (!channel.isEmpty())
++            return true;
++      Preset* preset = find_preset(0, 0);
++      if (!preset || preset->sfont->version().major != 3)
++            return true;
++      if (preset->sfont->preloadSamples(preset))
++            return true;
++      _error = preset->sfont->error();
++      return false;
++      }
++
+ bool Fluid::loadSoundFonts(const QStringList& sl)
+       {
+       QStringList ol = soundFonts();
+       if (ol == sl) {
+             qDebug("Fluid:loadSoundFonts: already loaded");
+-            return true;
++            QMutexLocker locker(&mutex);
++            return prepareDefaultPreset();
+             }
+       QMutexLocker locker(&mutex);
+       for(Voice* v : qAsConst(activeVoices))
+@@ -740,6 +762,12 @@ bool Fluid::loadSoundFonts(const QStringList& sl)
+                   locker.unlock();
+                   }
+             }
++      locker.relock();
++      if (!prepareDefaultPreset()) {
++            while (!sfonts.isEmpty())
++                  sfunload(sfonts.front()->id());
++            return false;
++            }
+       return ok;
+       }
+ 
+@@ -751,8 +779,13 @@ bool Fluid::loadSoundFonts(const QStringList& sl)
+ bool Fluid::addSoundFont(const QString& s)
+       {
+       QMutexLocker locker(&mutex);
+-      bool rv = (sfload(s) == -1) ? false : true;
+-      return rv;
++      const int id = sfload(s);
++      if (id == -1)
++            return false;
++      if (prepareDefaultPreset())
++            return true;
++      sfunload(id);
++      return false;
+       }
+ 
+ //---------------------------------------------------------
+@@ -770,7 +803,7 @@ bool Fluid::removeSoundFont(const QString& s)
+             return false;
+       
+       sfunload(sf->id());
+-      return true;
++      return prepareDefaultPreset();
+       }
+ 
+ //---------------------------------------------------------
+@@ -808,6 +841,12 @@ int Fluid::sfload(const QString& filename)
+                   sfonts.removeAll(sf.get());
+                   throw;
+                   }
++            if (loadWasCanceled() || globalTerminate()) {
++                  sfonts.removeAll(sf.get());
++                  updatePatchList();
++                  _error = QStringLiteral("Canceled");
++                  return -1;
++                  }
+             return sf.release()->id();
+             }
+       catch(const std::bad_alloc&) {
+diff --git a/audio/midi/fluid/fluid.h b/audio/midi/fluid/fluid.h
+index 666764dbd..075e75032 100644
+--- a/audio/midi/fluid/fluid.h
++++ b/audio/midi/fluid/fluid.h
+@@ -321,6 +321,7 @@ class Fluid : public Synthesizer {
+ 
+       QMutex mutex;
+       void updatePatchList();
++      bool prepareDefaultPreset();
+ 
+       //the variable is used to stop loading samples from the sf files
+       std::atomic<bool> _globalTerminate { false };
+diff --git a/audio/midi/fluid/sfont.cpp b/audio/midi/fluid/sfont.cpp
+index 6cd59b79a..399b05552 100644
+--- a/audio/midi/fluid/sfont.cpp
++++ b/audio/midi/fluid/sfont.cpp
+@@ -110,13 +110,15 @@ bool SFont::read(const QString& s)
+       return true;
+       }
+ 
+-// Used before publishing large SF2s. Only referenced samples are resident;
+-// sample objects shared by zones/presets are read once. No audio-thread I/O.
+-bool SFont::preloadSamples()
++// Load one selected preset, or all referenced samples for a large SF2.
++// Shared sample objects are read once, on the font-loading thread.
++bool SFont::preloadSamples(Preset* selected)
+       {
+       _error.clear();
+       QSet<Sample*> referenced;
+       for (Preset* p : qAsConst(presets)) {
++            if (selected && p != selected)
++                  continue;
+             auto addInstrument = [&referenced](Instrument* i) {
+                   if (!i)
+                         return;
+diff --git a/audio/midi/fluid/sfont.h b/audio/midi/fluid/sfont.h
+index 9b226893e..785a18b80 100644
+--- a/audio/midi/fluid/sfont.h
++++ b/audio/midi/fluid/sfont.h
+@@ -118,7 +118,7 @@ class SFont {
+       void setSamplesize(qint64 v)              { samplesize = v; }
+       qint64 getSamplesize() const              { return samplesize; }
+       QString error() const                     { return _error; }
+-      bool preloadSamples();
++      bool preloadSamples(Preset* selected = nullptr);
+       const QList<Preset*> getPresets() const   { return presets; }
+       SFVersion version() const                 { return _version; }
+       int bankOffset() const                    { return _bankOffset; }
