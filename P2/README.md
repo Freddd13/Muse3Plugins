@@ -2,7 +2,7 @@
 
 0.106.0钢琴换踏板已编译，32项编辑／播放与三种音源5项检查通过，待当前运行程序退出后安装；当前使用0.105.0。当前结果与后续顺序见[总进度](native/personal/docs/REWORK_PROGRESS.md)。
 
-当前版本0.105.0。B5补齐踏板端点、画间隙、重画、分开及删除恢复，继续自动换踏板、共用／保留音源与实体录入。全部33项和后续C—F顺序见[当前进度与完整计划](native/personal/docs/REWORK_PROGRESS.md)；[返工记录](../Planning/USABILITY_REWORK_20261019.md)保留各批具体操作。以下为历次实现记录。
+当前版本0.158.1。F-T0修复谱面原曲停止、松键后鼠标占用及滚轮力度回弹；相关操作检查通过。接着继续实体MIDI与真实音乐听感。全部33项和后续C—F顺序见[当前进度与完整计划](native/personal/docs/REWORK_PROGRESS.md)；[返工记录](../Planning/USABILITY_REWORK_20261019.md)保留各批具体操作。以下为历次实现记录。
 
 
 批准内容见 [实施计划](../Planning/P2_IMPLEMENTATION.md)。
