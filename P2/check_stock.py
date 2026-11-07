@@ -10,6 +10,7 @@ parser.add_argument('--score',type=Path,default=R.parent/'P1/out/final-regressio
 parser.add_argument('--metadata',default='kumo.transcription')
 parser.add_argument('--label',default='')
 parser.add_argument('--opaque',action='store_true',help='Compare non-JSON metadata without decoding it')
+parser.add_argument('--notes-only',action='store_true',help='Check ordinary notation while reporting extra note tags separately')
 args=parser.parse_args()
 source=args.score.resolve()
 suffix=('-'+args.label) if args.label else ''
@@ -49,13 +50,16 @@ def engraving(root):
 assert notes(before)==notes(after),(notes(before),notes(after))
 assert engraving(before)==engraving(after),(engraving(before),engraving(after))
 assert durations(before)==durations(after)
-if args.opaque:
+if args.notes_only:
+ pass
+elif args.opaque:
  assert marker(before)==marker(after)
 else:
  assert json.loads(marker(before))==json.loads(marker(after))
 report={'program':'MuseScore 3.6.2.548021803 (official x64)', 'exit':result.returncode,
         'source':str(source),'saved':str(target),'notes':len(notes(after)),
-        'sameNotes':True,'sameDurations':True,'sameFingeringStaffMoveAndSlur':True,'sameTranscriptionData':args.metadata=='kumo.transcription','sameMetadata':args.metadata,
+        'sameNotes':True,'sameDurations':True,'sameFingeringStaffMoveAndSlur':True,'sameTranscriptionData':not args.notes_only and args.metadata=='kumo.transcription','sameMetadata':None if args.notes_only else args.metadata,
+        'performanceTimingTagsBefore':len(before.findall('.//kumoPerformanceTiming')),'performanceTimingTagsAfter':len(after.findall('.//kumoPerformanceTiming')),
         'originalVelocityBackupTagsBefore':len(before.findall('.//kumoOriginalVelocity')),'originalVelocityBackupTagsAfter':len(after.findall('.//kumoOriginalVelocity')),
         'binarySha256':hashlib.sha256(program.read_bytes()).hexdigest(),
         'installerSha256':'fa3ca0f8cc5b0e8b0c0bb8ef11e227b9b27b2a5c9da28dab58bafcbb0eb657d0'}
