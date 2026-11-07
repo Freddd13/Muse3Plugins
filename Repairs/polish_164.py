@@ -1,0 +1,11 @@
+from pathlib import Path
+R=Path(__file__).resolve().parents[1];p=R/'P2/native/mscore/scorevideo/scorevideopanel.cpp';t=p.read_text('utf8')
+t=t.replace('settings->setText(tr("设置"));','settings->setObjectName("scoreVideoSettingsToggle");settings->setText(tr("设置"));')
+t=t.replace('settings->setChecked(true);','settings->setChecked(QSettings().value("scoreVideoPanel/settingsVisible",true).toBool());')
+t=t.replace('connect(settings,&QToolButton::toggled,scroll,&QWidget::setVisible);','connect(settings,&QToolButton::toggled,scroll,&QWidget::setVisible);scroll->setVisible(settings->isChecked());connect(settings,&QToolButton::clicked,this,[](bool shown){QSettings().setValue("scoreVideoPanel/settingsVisible",shown);});')
+t=t.replace('}}refresh();});\n    _timer.setInterval','}}refresh();if(!result.contains("previewPath"))_status->setText(_export.status());});\n    _timer.setInterval')
+t=t.replace('QDockWidget::showEvent(event);_document.setScore','QDockWidget::showEvent(event);if(!property("videoLayoutRestored").toBool()){for(const char* name:{"scoreVideoHorizontal","scoreVideoVertical"}){const auto state=QSettings().value(QString("scoreVideoPanel/")+name).toByteArray();if(!state.isEmpty())findChild<QSplitter*>(name)->restoreState(state);}setProperty("videoLayoutRestored",true);}_document.setScore')
+t=t.replace('stopPlayback();_timer.stop();_document.cancel();','stopPlayback();for(const char* name:{"scoreVideoHorizontal","scoreVideoVertical"})QSettings().setValue(QString("scoreVideoPanel/")+name,findChild<QSplitter*>(name)->saveState());_timer.stop();_document.cancel();')
+t=t.replace('if(!project->property("playing").toBool()&&project->property("completed").toBool()){_position=_document.snapshot().duration;stopPlayback();}','if(!project->property("playing").toBool()){const bool completed=project->property("completed").toBool();const auto status=project->property("status").toString();if(completed)_position=_document.snapshot().duration;stopPlayback();_status->setText(completed?tr("预览已播放完毕。"):status);}')
+t=t.replace('_play->setIcon(componentToolIcon("pause"));refresh();','_play->setIcon(componentToolIcon("pause"));refresh();_status->setText(tr("正在预览 · %1").arg(_sound->currentText()));')
+p.write_text(t,encoding='utf8',newline='\n')

@@ -1,0 +1,16 @@
+from pathlib import Path
+R=Path(__file__).resolve().parents[1];N=R/'P2/native'
+p=N/'mscore/musescore.cpp';t=p.read_text('utf8');t='#include "workflow/toolicons.h"\n'+t if '#include "workflow/toolicons.h"' not in t else t;p.write_text(t,encoding='utf8',newline='\n')
+p=N/'mscore/scorevideo/scorevideopanel.cpp';t=p.read_text('utf8')
+t=t.replace('auto controls=new QHBoxLayout;','auto controls=new ControlFlowLayout;').replace('controls->addStretch();auto settings','auto settings')
+t=t.replace('auto rowControls=new QHBoxLayout;','auto rowControls=new ControlFlowLayout;').replace('rowControls->addStretch();lowerLayout','lowerLayout')
+t=t.replace('"volume",0,2,.1,2','"volume",0,1,.1,2')
+t=t.replace('mscore->findChild<ScoreVideoPanel*>("kumoScoreVideoDock")','mscore->findChild<ScoreVideoPanel*>()')
+t=t.replace('"post",Qt::BottomDockWidgetArea','"bottomTools",Qt::BottomDockWidgetArea')
+t=t.replace('"volume",settings.value("volume")','"duration",snapshot.duration')
+t=t.replace('connect(time,&QDoubleSpinBox::editingFinished,this,[this,time,i]{_document.moveBoundary(i,time->value());});','connect(time,&QDoubleSpinBox::editingFinished,this,[this,time,i]{if(_updating)return;const double at=time->value();QTimer::singleShot(0,this,[this,i,at]{_document.moveBoundary(i,at);});});')
+t=t.replace('void ScoreVideoPanel::stopPlayback(){\n','void ScoreVideoPanel::stopPlayback(){\n    _playAfterPrepare=false;if(_preparingPreview){_preparingPreview=false;_export.cancel();}\n')
+t=t.replace('QDockWidget::hideEvent(event);','if(_export.busy())_export.cancel();QDockWidget::hideEvent(event);')
+t=t.replace('_audioDuration*1000)},{"at",0.},{"duration",qMin(duration,_audioDuration*1000)','_audioDuration*1000)},{"at",0.},{"duration",qMin(duration,_audioDuration*1000)')
+p.write_text(t,encoding='utf8',newline='\n')
+p=N/'mscore/scorevideo/scorevideo.cpp';t=p.read_text('utf8').replace('if(_source==score)return;cancel();','if(_source==score&&(score||!_copy))return;cancel();');p.write_text(t,encoding='utf8',newline='\n')
