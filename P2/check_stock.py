@@ -9,6 +9,7 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--score',type=Path,default=R.parent/'P1/out/final-regression/transcription-compat-059.mscz')
 parser.add_argument('--metadata',default='kumo.transcription')
 parser.add_argument('--label',default='')
+parser.add_argument('--opaque',action='store_true',help='Compare non-JSON metadata without decoding it')
 args=parser.parse_args()
 source=args.score.resolve()
 suffix=('-'+args.label) if args.label else ''
@@ -48,7 +49,10 @@ def engraving(root):
 assert notes(before)==notes(after),(notes(before),notes(after))
 assert engraving(before)==engraving(after),(engraving(before),engraving(after))
 assert durations(before)==durations(after)
-assert json.loads(marker(before))==json.loads(marker(after))
+if args.opaque:
+ assert marker(before)==marker(after)
+else:
+ assert json.loads(marker(before))==json.loads(marker(after))
 report={'program':'MuseScore 3.6.2.548021803 (official x64)', 'exit':result.returncode,
         'source':str(source),'saved':str(target),'notes':len(notes(after)),
         'sameNotes':True,'sameDurations':True,'sameFingeringStaffMoveAndSlur':True,'sameTranscriptionData':args.metadata=='kumo.transcription','sameMetadata':args.metadata,
