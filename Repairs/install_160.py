@@ -1,4 +1,4 @@
-"""Install the verified executable and published guide in the existing program folder."""
+"""Install the verified executable and published guide (requires Python 3.9+)."""
 from pathlib import Path
 import hashlib
 import importlib.util

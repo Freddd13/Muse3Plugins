@@ -17,7 +17,9 @@ assert all(name in binary for name in (b"0.160.0",b"Kumo branch",b"Freddd13"))
 env=dict(os.environ,QT_QPA_PLATFORM="offscreen",KUMO_MCP_AUTOSTART="0",PATH=str(INSTALL)+os.pathsep+os.environ["PATH"],QT_PLUGIN_PATH=str(INSTALL),TEMP=str(ROOT/"P2/out/check-temp"),TMP=str(ROOT/"P2/out/check-temp"))
 source=HOST/"mtest/mscore/scoreobserver/piano.mscx"
 report={}
-for label,program in (("previous",INSTALL/"MuseScore3Evo.exe"),("new",latest)):
+previous=OUT/"previous-MuseScore3Evo.exe"
+if not previous.is_file():previous=INSTALL/"MuseScore3Evo.exe"
+for label,program in (("previous",previous),("new",latest)):
     for suffix in ("mid","pdf"):
         target=OUT/(label+"-ordinary."+suffix)
         result=subprocess.run([str(program),"-c",str(OUT/(label+"-cli-settings")),"-o",str(target),str(source)],env=env,cwd=INSTALL,capture_output=True,timeout=60)
