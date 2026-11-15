@@ -90,6 +90,8 @@ MuseScore {
             case "arrangementPlaybackPage":
             case "arrangementRange":
             case "arrangementImage":
+            case "proposeVelocityAdjustment":
+            case "readEngravingLayout":
             case "arrangementSuggestions":
             case "storeArrangementInfo":
             case "submitArrangementOptions":
